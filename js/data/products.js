@@ -1,112 +1,124 @@
 // ==========================================================================
-// ฐานข้อมูลสินค้าในร้านค้าปลีก (RETAIL PRODUCT CATALOG)
-// มีข้อมูล: id, name, price, image (รูปภาพอ้างอิงจากเน็ต), keywords (สำหรับ AI OCR เทียบข้อมูล)
-// หมวดสินค้านี้สำหรับ "บิลร้านค้า" และการสแกนตรวจจับ "สินค้าในร้าน"
-// (เมนูอาหารตามสั่งแยกจัดการที่ restaurant_menu.js)
+// ฐานข้อมูลสินค้าในร้านค้าปลีก (RETAIL PRODUCT CATALOG - ตรงตามตาราง Google Sheets "product")
+// มีข้อมูล: id, name, price, category, image, keywords
+// ข้อมูลตรงตามตาราง Google Sheets คอลัมน์ A, B, C (รหัสสินค้า, ชื่อสินค้า, ราคา)
 // ==========================================================================
 
 const PRODUCT_CATALOG = [
   { 
-    id: "P001", 
-    name: "น้ำอัดลมเป๊ปซี่ (กระป๋อง)", 
-    price: 20,
-    image: "https://images.unsplash.com/photo-1629203851122-3726ecdf080e?auto=format&fit=crop&w=300&q=80",
-    keywords: ["pepsi", "เป๊ปซี่", "แป๊บซี่", "pepsi max", "น้ำอัดลม", "โคล่า", "cola", "กระป๋อง", "soda", "can", "blue"]
-  },
-  { 
-    id: "P002", 
-    name: "น้ำอัดลมโค้ก (กระป๋อง)", 
-    price: 20,
+    id: "1001001", 
+    name: "โค้ก ออริจินัล ขนาด 325 มล.", 
+    price: 16,
+    category: "เครื่องดื่ม",
     image: "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=300&q=80",
-    keywords: ["coke", "โค้ก", "โคคา-โคล่า", "coca-cola", "coca cola", "cola", "น้ำอัดลม", "กระป๋อง", "soda", "can", "red"]
+    keywords: ["โค้ก", "coke", "coca-cola", "โคคา-โคล่า", "โค้กออริจินัล", "325", "น้ำอัดลม", "กระป๋อง", "แดง", "red"]
   },
   { 
-    id: "P003", 
-    name: "น้ำดื่มบริสุทธิ์ (ขวดเล็ก 600ml)", 
-    price: 10,
+    id: "1001002", 
+    name: "เป๊ปซี่ แมกซ์ ขนาด 325 มล.", 
+    price: 16,
+    category: "เครื่องดื่ม",
+    image: "https://images.unsplash.com/photo-1629203851122-3726ecdf080e?auto=format&fit=crop&w=300&q=80",
+    keywords: ["เป๊ปซี่", "pepsi", "pepsi max", "แมกซ์", "325", "น้ำอัดลม", "กระป๋อง", "ดำ", "น้ำเงิน", "blue", "black"]
+  },
+  { 
+    id: "1001003", 
+    name: "น้ำดื่ม ตราสิงห์ 600 มล.", 
+    price: 7,
+    category: "เครื่องดื่ม",
     image: "https://images.unsplash.com/photo-1548839140-29a749e1bc4e?auto=format&fit=crop&w=300&q=80",
-    keywords: ["น้ำเปล่า", "น้ำดื่ม", "ขวดเล็ก", "water", "water bottle", "bottle", "mineral water"]
+    keywords: ["น้ำดื่ม", "น้ำเปล่า", "สิงห์", "ตราสิงห์", "singha", "600", "ขวด", "water"]
   },
   { 
-    id: "P004", 
-    name: "น้ำดื่มบริสุทธิ์ (ขวดใหญ่ 1.5L)", 
-    price: 15,
-    image: "https://images.unsplash.com/photo-1559839914-1b34645a380e?auto=format&fit=crop&w=300&q=80",
-    keywords: ["น้ำเปล่า", "ขวดใหญ่", "1.5L", "mineral water", "water"]
-  },
-  { 
-    id: "P005", 
-    name: "น้ำแข็ง (ถุง)", 
-    price: 8,
-    image: "https://images.unsplash.com/photo-1518199266791-5375a83190b7?auto=format&fit=crop&w=300&q=80",
-    keywords: ["น้ำแข็ง", "น้ำแข็งถุง", "ice", "ice cube"]
-  },
-  { 
-    id: "P006", 
-    name: "บะหมี่กึ่งสำเร็จรูป มาม่า (ซอง)", 
-    price: 10,
-    image: "https://images.unsplash.com/photo-1612927601601-6638404737ce?auto=format&fit=crop&w=300&q=80",
-    keywords: ["มาม่า", "mama", "ต้มยำกุ้ง", "หมูสับ", "บะหมี่กึ่งสำเร็จรูป", "noodle", "noodles", "instant noodles"]
-  },
-  { 
-    id: "P007", 
-    name: "มันฝรั่งทอดกรอบ เลย์ (ซอง)", 
-    price: 25,
-    image: "https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=300&q=80",
-    keywords: ["lay", "lays", "เลย์", "ขนม", "มันฝรั่ง", "มันฝรั่งทอด", "snack", "potato chips", "chips"]
-  },
-  { 
-    id: "P008", 
-    name: "เบียร์ขวด (สิงห์ / ช้าง / ลีโอ)", 
-    price: 60,
-    image: "https://images.unsplash.com/photo-1608270199127-ec1c12bf5d9c?auto=format&fit=crop&w=300&q=80",
-    keywords: ["เบียร์", "beer", "เบียร์ขวด", "ช้าง", "สิงห์", "ลีโอ", "leo", "chang", "singha", "alcohol"]
-  },
-  { 
-    id: "P009", 
-    name: "เครื่องดื่มชูกำลัง M-150 / คาราบาว", 
-    price: 12,
-    image: "https://images.unsplash.com/photo-1622543925917-763c34d1a86e?auto=format&fit=crop&w=300&q=80",
-    keywords: ["m-150", "m150", "คาราบาว", "คาราบาวแดง", "กระทิงแดง", "ชูกำลัง", "energy drink", "red bull"]
-  },
-  { 
-    id: "P010", 
-    name: "กาแฟกระป๋องพร้อมดื่ม (เบอร์ดี้/เนสกาแฟ)", 
-    price: 17,
-    image: "https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?auto=format&fit=crop&w=300&q=80",
-    keywords: ["กาแฟกระป๋อง", "เบอร์ดี้", "birdy", "เนสกาแฟ", "nescafe", "กาแฟ", "coffee", "canned coffee"]
-  },
-  { 
-    id: "P011", 
-    name: "นมเปรี้ยว / นมกล่อง UHT", 
-    price: 15,
+    id: "1002001", 
+    name: "นมโฟร์โมสต์ รสจืด 225 มล.", 
+    price: 14,
+    category: "นมและผลิตภัณฑ์จากนม",
     image: "https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=300&q=80",
-    keywords: ["นม", "นมเปรี้ยว", "นมกล่อง", "meiji", "ดัชมิลล์", "milk", "uht"]
+    keywords: ["นม", "โฟร์โมสต์", "รสจืด", "foremost", "225", "กล่อง", "uht", "milk"]
   },
   { 
-    id: "P012", 
-    name: "ปลากระป๋องสามแม่ครัว", 
+    id: "1003001", 
+    name: "บะหมี่กึ่งสำเร็จรูป มาม่า รสต้มยำกุ้ง", 
+    price: 7,
+    category: "อาหารแห้งและกึ่งสำเร็จรูป",
+    image: "https://images.unsplash.com/photo-1612927601601-6638404737ce?auto=format&fit=crop&w=300&q=80",
+    keywords: ["มาม่า", "mama", "ต้มยำกุ้ง", "บะหมี่", "บะหมี่กึ่งสำเร็จรูป", "ซอง", "noodle"]
+  },
+  { 
+    id: "1003002", 
+    name: "บะหมี่กึ่งสำเร็จรูป ยำยำ รสหมูสับ", 
+    price: 7,
+    category: "อาหารแห้งและกึ่งสำเร็จรูป",
+    image: "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&w=300&q=80",
+    keywords: ["ยำยำ", "yumyum", "หมูสับ", "บะหมี่", "บะหมี่กึ่งสำเร็จรูป", "ซอง", "noodle"]
+  },
+  { 
+    id: "1004001", 
+    name: "มันฝรั่งทอดกรอบ เลย์ รสคลาสสิค 48 กรัม", 
     price: 22,
-    image: "https://images.unsplash.com/photo-1534483509719-3feaee7c30da?auto=format&fit=crop&w=300&q=80",
-    keywords: ["ปลากระป๋อง", "สามแม่ครัว", "ปลาซาร์ดีน", "canned fish", "sardine"]
+    category: "ขนมขบเคี้ยว",
+    image: "https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=300&q=80",
+    keywords: ["เลย์", "lays", "lay", "มันฝรั่ง", "คลาสสิค", "ขนม", "chips", "snack", "เหลือง"]
   },
   { 
-    id: "P013", 
-    name: "ขนมปังฟาร์มเฮ้าส์", 
-    price: 25,
+    id: "1004002", 
+    name: "ขนมปังแซนด์วิช ฟาร์มเฮ้าส์ รสตัดขอบ", 
+    price: 22,
+    category: "เบเกอรี่",
     image: "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=300&q=80",
-    keywords: ["ขนมปัง", "ฟาร์มเฮ้าส์", "bread", "toast", "farmhouse"]
+    keywords: ["ขนมปัง", "ฟาร์มเฮ้าส์", "farmhouse", "แซนด์วิช", "ตัดขอบ", "bread"]
   },
   { 
-    id: "P014", 
-    name: "สบู่ก้อน / แชมพูสระผม", 
+    id: "1004003", 
+    name: "สาหร่ายทอด เถ้าแก่น้อย รสเผ็ด 12 กรัม", 
     price: 20,
+    category: "ขนมขบเคี้ยว",
+    image: "https://images.unsplash.com/photo-1541544741938-0af808871cc0?auto=format&fit=crop&w=300&q=80",
+    keywords: ["สาหร่าย", "เถ้าแก่น้อย", "taokaenoi", "รสเผ็ด", "ขนม", "snack", "seaweed"]
+  },
+  { 
+    id: "1005001", 
+    name: "ปลากระป๋อง ตราสามแม่ครัว 155 กรัม", 
+    price: 20,
+    category: "อาหารกระป๋อง",
+    image: "https://images.unsplash.com/photo-1534483509719-3feaee7c30da?auto=format&fit=crop&w=300&q=80",
+    keywords: ["ปลากระป๋อง", "สามแม่ครัว", "ปลาซาร์ดีน", "155", "canned fish", "sardine"]
+  },
+  { 
+    id: "1006001", 
+    name: "สบู่ก้อน โพรเทคส์ ไอซ์ซี่คูล 65 กรัม", 
+    price: 15,
+    category: "ของใช้ส่วนตัว",
     image: "https://images.unsplash.com/photo-1607006314640-77a82987178c?auto=format&fit=crop&w=300&q=80",
-    keywords: ["สบู่", "แชมพู", "soap", "shampoo", "lux", "pantene", "sunsilk"]
+    keywords: ["สบู่", "โพรเทคส์", "protex", "ไอซ์ซี่คูล", "soap"]
+  },
+  { 
+    id: "1006002", 
+    name: "ยาสีฟัน คอลเกต รสสดชื่นเย็นซ่า 80 กรัม", 
+    price: 35,
+    category: "ของใช้ส่วนตัว",
+    image: "https://images.unsplash.com/photo-1559591937-e1032d2077e6?auto=format&fit=crop&w=300&q=80",
+    keywords: ["ยาสีฟัน", "คอลเกต", "colgate", "สดชื่นเย็นซ่า", "toothpaste"]
+  },
+  { 
+    id: "1007001", 
+    name: "ผงซักฟอก บรีส เอกเซล ขนาด 80 กรัม", 
+    price: 12,
+    category: "ผลิตภัณฑ์ซักล้าง",
+    image: "https://images.unsplash.com/photo-1583947215259-38e31be8751f?auto=format&fit=crop&w=300&q=80",
+    keywords: ["ผงซักฟอก", "บรีส", "บรีสเอกเซล", "breeze", "detergent"]
+  },
+  { 
+    id: "1007002", 
+    name: "น้ำยาล้างจาน ซันไลต์ เลมอน เทอร์โบ 300 มล.", 
+    price: 20,
+    category: "ผลิตภัณฑ์ซักล้าง",
+    image: "https://images.unsplash.com/photo-1585670270677-2f3b793798cf?auto=format&fit=crop&w=300&q=80",
+    keywords: ["น้ำยาล้างจาน", "ซันไลต์", "sunlight", "เลมอน", "dishwashing"]
   }
 ];
 
-// Fallback for Node.js testing
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { PRODUCT_CATALOG };
 }

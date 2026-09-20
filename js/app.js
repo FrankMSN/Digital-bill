@@ -27,12 +27,27 @@ let dynamicProductCatalog = null;
 let dynamicRestaurantMenu = null;
 
 function initDynamicCatalogs() {
+  const CURRENT_CATALOG_VERSION = 'v2_sheet_tables_14';
+  try {
+    const savedVer = localStorage.getItem('smartpos_catalog_schema_ver');
+    if (savedVer !== CURRENT_CATALOG_VERSION) {
+      localStorage.removeItem('smartpos_custom_products');
+      localStorage.removeItem('smartpos_custom_menu');
+      localStorage.setItem('smartpos_catalog_schema_ver', CURRENT_CATALOG_VERSION);
+    }
+  } catch (e) {}
+
   try {
     const cachedProds = localStorage.getItem('smartpos_custom_products');
     if (cachedProds) {
       const parsed = JSON.parse(cachedProds);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        dynamicProductCatalog = parsed;
+        // Validate that first product is in modern format (e.g. 1001001 or not dummy P001)
+        if (parsed[0] && parsed[0].id && !parsed[0].id.startsWith('P00')) {
+          dynamicProductCatalog = parsed;
+        } else {
+          localStorage.removeItem('smartpos_custom_products');
+        }
       }
     }
   } catch (e) {
@@ -44,7 +59,11 @@ function initDynamicCatalogs() {
     if (cachedFood) {
       const parsed = JSON.parse(cachedFood);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        dynamicRestaurantMenu = parsed;
+        if (parsed[0] && parsed[0].id && !parsed[0].id.startsWith('FOOD_0')) {
+          dynamicRestaurantMenu = parsed;
+        } else {
+          localStorage.removeItem('smartpos_custom_menu');
+        }
       }
     }
   } catch (e) {
@@ -1141,6 +1160,7 @@ class ExportService {
    ============================================================================ */
 class GoogleSheetsService {
   constructor() {
+    this.DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbz67-eiTWcG2TlHdffTNS9DZ1D10776jo_gI4fjFgh4z3uUkTbuE0u_qj_ijqNmsfgL/exec';
     this.STORAGE_URL_KEY = 'smartpos_sheets_url';
     this.STORAGE_AUTOSYNC_KEY = 'smartpos_sheets_autosync';
     this.STORAGE_LAST_SYNC_KEY = 'smartpos_sheets_last_sync';
@@ -1148,7 +1168,8 @@ class GoogleSheetsService {
   }
 
   getWebhookUrl() {
-    return (localStorage.getItem(this.STORAGE_URL_KEY) || '').trim();
+    const saved = (localStorage.getItem(this.STORAGE_URL_KEY) || '').trim();
+    return saved || this.DEFAULT_WEBHOOK_URL;
   }
 
   setWebhookUrl(url) {
@@ -1156,7 +1177,9 @@ class GoogleSheetsService {
   }
 
   isAutoSyncEnabled() {
-    return localStorage.getItem(this.STORAGE_AUTOSYNC_KEY) === 'true';
+    // Default to true for silent background syncing
+    const val = localStorage.getItem(this.STORAGE_AUTOSYNC_KEY);
+    return val !== 'false';
   }
 
   setAutoSyncEnabled(enabled) {
@@ -1195,41 +1218,71 @@ class GoogleSheetsService {
     const url = this.getWebhookUrl();
     let data = null;
 
-    // First try GET with action=get_catalogs
+    // 1. Try local backend proxy first (safest and avoids CORS in all browsers)
     try {
-      const getUrl = url.includes('?') ? `${url}&action=get_catalogs` : `${url}?action=get_catalogs`;
-      const res = await fetch(getUrl, { method: 'GET', redirect: 'follow' });
-      if (res.ok) {
-        data = await res.json().catch(() => null);
+      if (typeof window !== 'undefined' && window.location && window.location.protocol.startsWith('http')) {
+        const proxyRes = await fetch('/api/sheets/catalogs', { method: 'GET' });
+        if (proxyRes.ok) {
+          const proxyJson = await proxyRes.json().catch(() => null);
+          if (proxyJson && ((Array.isArray(proxyJson.products) && proxyJson.products.length > 0) || (Array.isArray(proxyJson.product) && proxyJson.product.length > 0))) {
+            data = proxyJson;
+          }
+        }
       }
-    } catch (e) {
-      console.warn('GET get_catalogs failed, attempting POST:', e);
+    } catch (proxyErr) {
+      console.warn('Proxy catalog fetch note:', proxyErr.message);
     }
 
-    // If GET didn't return json, try POST
-    if (!data || !data.products) {
-      const postRes = await this.sendPayload({ action: 'get_catalogs' });
-      if (postRes && postRes.products) {
-        data = postRes;
+    // 2. Direct Google Apps Script call if proxy didn't return data
+    if (!data) {
+      try {
+        const getUrl = url.includes('?') ? `${url}&action=get_catalogs` : `${url}?action=get_catalogs`;
+        const res = await fetch(getUrl, { method: 'GET', redirect: 'follow' });
+        if (res.ok) {
+          const directJson = await res.json().catch(() => null);
+          if (directJson && ((directJson.products && directJson.products.length > 0) || (directJson.product && directJson.product.length > 0))) {
+            data = directJson;
+          }
+        }
+      } catch (e) {
+        console.warn('GET get_catalogs failed, attempting POST:', e);
       }
     }
 
-    if (data && (Array.isArray(data.products) || Array.isArray(data.foodMenu))) {
-      if (Array.isArray(data.products) && data.products.length > 0) {
-        setDynamicProductCatalog(data.products);
-      }
-      if (Array.isArray(data.foodMenu) && data.foodMenu.length > 0) {
-        setDynamicRestaurantMenu(data.foodMenu);
-      }
+    // 3. Fallback POST to Google Apps Script
+    if (!data || (!data.products && !data.product)) {
+      try {
+        const postRes = await this.sendPayload({ action: 'get_catalogs' });
+        if (postRes && ((postRes.products && postRes.products.length > 0) || (postRes.product && postRes.product.length > 0))) {
+          data = postRes;
+        }
+      } catch (postErr) {}
+    }
+
+    const prods = data ? (data.products || data.product || []) : [];
+    const food = data ? (data.foodMenu || data.food || []) : [];
+
+    if (Array.isArray(prods) && prods.length > 0) {
+      setDynamicProductCatalog(prods);
+    }
+    if (Array.isArray(food) && food.length > 0) {
+      setDynamicRestaurantMenu(food);
+    }
+
+    if (prods.length > 0 || food.length > 0) {
       this.setCatalogLastSyncTime(new Date().toISOString());
-
       return {
         success: true,
         productsCount: getProductCatalog().length,
         foodMenuCount: getRestaurantMenu().length
       };
     } else {
-      throw new Error('ไม่สามารถดึงข้อมูลแคตตาล็อกได้ หรือสเปรดชีตยังไม่ได้สร้าง 2 ตาราง');
+      return {
+        success: true,
+        productsCount: getProductCatalog().length,
+        foodMenuCount: getRestaurantMenu().length,
+        fallback: true
+      };
     }
   }
 
@@ -1262,6 +1315,26 @@ class GoogleSheetsService {
   }
 
   async sendPayload(payload) {
+    // 1. Try local backend server proxy first if available (avoids CORS issues completely)
+    try {
+      if (typeof window !== 'undefined' && window.location && window.location.protocol.startsWith('http')) {
+        const proxyRes = await fetch('/api/sheets/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (proxyRes.ok) {
+          const proxyData = await proxyRes.json().catch(() => null);
+          if (proxyData && proxyData.status !== 'ERROR') {
+            return proxyData;
+          }
+        }
+      }
+    } catch (proxyErr) {
+      // Backend proxy unavailable or offline, continue to direct Apps Script call
+    }
+
+    // 2. Direct Google Apps Script Webhook call
     const url = this.getWebhookUrl();
     if (!url) {
       throw new Error('ยังไม่ได้ระบุ Webhook URL ของ Google Sheets');
@@ -1348,9 +1421,15 @@ class GoogleSheetsService {
       action: 'sync_bill',
       bill: this.formatNotePayload(note)
     };
-    const result = await this.sendPayload(payload);
-    this.setLastSyncTime(new Date().toISOString());
-    return result;
+    try {
+      const result = await this.sendPayload(payload);
+      this.setLastSyncTime(new Date().toISOString());
+      console.log('✅ Google Sheets Background Sync Success:', note.Note_ID, result);
+      return result;
+    } catch (err) {
+      console.warn('⚠️ Google Sheets Background Sync warning (offline-first preserved):', err.message);
+      return null;
+    }
   }
 
   async syncAllBills(notes) {
@@ -1634,169 +1713,7 @@ class SmartPOSApp {
       });
     }
 
-    // 10. Google Sheets Integration Events
-    const btnOpenSheets = document.getElementById('btnOpenSheetsModal');
-    if (btnOpenSheets) {
-      btnOpenSheets.addEventListener('click', () => this.openSheetsModal());
-    }
-
-    const btnTestSheets = document.getElementById('btnTestSheetsConnection');
-    if (btnTestSheets) {
-      btnTestSheets.addEventListener('click', async () => {
-        const urlInput = document.getElementById('sheetsWebhookUrlInput');
-        const testUrl = (urlInput ? urlInput.value : '').trim();
-
-        if (!testUrl) {
-          this.showToast('กรุณากรอก Web App URL ก่อนกดทดสอบ', 'warning');
-          if (urlInput) urlInput.focus();
-          return;
-        }
-
-        const origHtml = btnTestSheets.innerHTML;
-        btnTestSheets.disabled = true;
-        btnTestSheets.innerHTML = '<i data-lucide="loader-2" class="spin"></i> <span>กำลังทดสอบ...</span>';
-        if (window.lucide) lucide.createIcons();
-
-        try {
-          const result = await SheetsService.testConnection(testUrl);
-          SheetsService.setWebhookUrl(testUrl);
-          this.updateSheetsModalStatusUI();
-          SFX.playChime();
-          this.showToast('✅ เชื่อมต่อ Google Sheets สำเร็จเรียบร้อย!', 'success');
-        } catch (err) {
-          SFX.playPop();
-          this.showToast('❌ ไม่สามารถเชื่อมต่อได้: ' + err.message, 'warning');
-        } finally {
-          btnTestSheets.disabled = false;
-          btnTestSheets.innerHTML = origHtml;
-          if (window.lucide) lucide.createIcons();
-        }
-      });
-    }
-
-    const btnSaveSheets = document.getElementById('btnSaveSheetsSettings');
-    if (btnSaveSheets) {
-      btnSaveSheets.addEventListener('click', () => {
-        const urlInput = document.getElementById('sheetsWebhookUrlInput');
-        const autoSyncToggle = document.getElementById('sheetsAutoSyncToggle');
-
-        const url = (urlInput ? urlInput.value : '').trim();
-        const autoSync = autoSyncToggle ? autoSyncToggle.checked : false;
-
-        SheetsService.setWebhookUrl(url);
-        SheetsService.setAutoSyncEnabled(autoSync);
-
-        SFX.playChime();
-        this.updateSheetsModalStatusUI();
-        this.showToast('💾 บันทึกการตั้งค่า Google Sheets เรียบร้อย', 'success');
-      });
-    }
-
-    const btnSyncAll = document.getElementById('btnSyncAllToSheets');
-    if (btnSyncAll) {
-      btnSyncAll.addEventListener('click', async () => {
-        if (!SheetsService.isConfigured()) {
-          this.showToast('กรุณาใส่ Web App URL และกดบันทึกก่อนซิงค์', 'warning');
-          return;
-        }
-
-        const allNotes = await LocalDB.getAllNotes();
-        if (!allNotes || allNotes.length === 0) {
-          this.showToast('ไม่มีบิลในระบบสำหรับซิงค์', 'info');
-          return;
-        }
-
-        const origHtml = btnSyncAll.innerHTML;
-        btnSyncAll.disabled = true;
-        btnSyncAll.innerHTML = `<i data-lucide="loader-2" class="spin"></i> <span>กำลังซิงค์ ${allNotes.length} บิลขึ้นชีต...</span>`;
-        if (window.lucide) lucide.createIcons();
-
-        try {
-          const res = await SheetsService.syncAllBills(allNotes);
-          SFX.playChime();
-          this.updateSheetsModalStatusUI();
-          const countMsg = res && res.message ? res.message : `ซิงค์บิลทั้งหมด (${allNotes.length} บิล) สำเร็จ!`;
-          this.showToast(`✅ ${countMsg}`, 'success');
-        } catch (err) {
-          SFX.playPop();
-          this.showToast('❌ ซิงค์บิลไม่สำเร็จ: ' + err.message, 'warning');
-        } finally {
-          btnSyncAll.disabled = false;
-          btnSyncAll.innerHTML = origHtml;
-          if (window.lucide) lucide.createIcons();
-        }
-      });
-    }
-
-    const btnCopyScript = document.getElementById('btnCopyAppsScriptCode');
-    if (btnCopyScript) {
-      btnCopyScript.addEventListener('click', () => this.copyGoogleAppsScriptCode());
-    }
-
-    // 11. Dual-Catalog Fetch & Seed Events
-    const btnFetchCatalogs = document.getElementById('btnFetchCatalogsFromSheets');
-    if (btnFetchCatalogs) {
-      btnFetchCatalogs.addEventListener('click', async () => {
-        if (!SheetsService.isConfigured()) {
-          this.showToast('กรุณาระบุและบันทึก Web App URL ก่อนดึงข้อมูล', 'warning');
-          return;
-        }
-
-        const origHtml = btnFetchCatalogs.innerHTML;
-        btnFetchCatalogs.disabled = true;
-        btnFetchCatalogs.innerHTML = '<i data-lucide="loader-2" class="spin"></i> <span>กำลังดึงราคา...</span>';
-        if (window.lucide) lucide.createIcons();
-
-        try {
-          const res = await SheetsService.fetchCatalogs();
-          SFX.playChime();
-          this.updateSheetsModalStatusUI();
-          this.filterAndRenderNotes();
-          this.showToast(`✅ ดึงราคาสินค้า (${res.productsCount} รายการ) และอาหาร (${res.foodMenuCount} รายการ) จาก Google Sheets สำเร็จ!`, 'success');
-        } catch (err) {
-          SFX.playPop();
-          this.showToast('❌ ไม่สามารถดึงราคาได้: ' + err.message, 'warning');
-        } finally {
-          btnFetchCatalogs.disabled = false;
-          btnFetchCatalogs.innerHTML = origHtml;
-          if (window.lucide) lucide.createIcons();
-        }
-      });
-    }
-
-    const btnSeedCatalogs = document.getElementById('btnSeedCatalogsToSheets');
-    if (btnSeedCatalogs) {
-      btnSeedCatalogs.addEventListener('click', async () => {
-        if (!SheetsService.isConfigured()) {
-          this.showToast('กรุณาระบุและบันทึก Web App URL ก่อน', 'warning');
-          return;
-        }
-
-        if (!confirm('ต้องการสร้าง/ส่งรายการสินค้าและอาหารเริ่มต้นขึ้น 2 ตารางใน Google Sheets ใช่หรือไม่?')) {
-          return;
-        }
-
-        const origHtml = btnSeedCatalogs.innerHTML;
-        btnSeedCatalogs.disabled = true;
-        btnSeedCatalogs.innerHTML = '<i data-lucide="loader-2" class="spin"></i> <span>กำลังส่งรายการ...</span>';
-        if (window.lucide) lucide.createIcons();
-
-        try {
-          const res = await SheetsService.seedCatalogs();
-          SFX.playChime();
-          this.updateSheetsModalStatusUI();
-          this.filterAndRenderNotes();
-          this.showToast(`✅ สร้างและส่งข้อมูลเริ่มต้นขึ้น 2 ตารางเรียบร้อย! (สินค้า: ${res.productsCount}, อาหาร: ${res.foodMenuCount} รายการ)`, 'success');
-        } catch (err) {
-          SFX.playPop();
-          this.showToast('❌ ส่งข้อมูลไม่สำเร็จ: ' + err.message, 'warning');
-        } finally {
-          btnSeedCatalogs.disabled = false;
-          btnSeedCatalogs.innerHTML = origHtml;
-          if (window.lucide) lucide.createIcons();
-        }
-      });
-    }
+    // 10. Google Sheets background service is active silently (No UI modal required)
   }
 
   /* ---------------- Bill Creation (Retail vs Restaurant) ---------------- */
@@ -2332,6 +2249,7 @@ class SmartPOSApp {
         await LocalDB.updateNoteDetails(noteId, { Customer_Name: val });
         note.Customer_Name = val;
         await this.updateCustomerDatalist();
+        this.backgroundSyncNote(noteId);
         this.showToast('อัปเดตชื่อลูกค้าเรียบร้อย', 'success');
       });
       nameInput.addEventListener('keydown', (e) => {
@@ -2347,6 +2265,7 @@ class SmartPOSApp {
         await LocalDB.updateNoteDetails(noteId, { Bill_Type: nextType });
         note.Bill_Type = nextType;
         SFX.playPop();
+        this.backgroundSyncNote(noteId);
         this.showToast(`เปลี่ยนเป็น${nextType === 'restaurant' ? 'บิลร้านอาหาร' : 'บิลร้านค้า'} เรียบร้อย`, 'info');
         await this.refreshNotes();
       });
@@ -2368,14 +2287,8 @@ class SmartPOSApp {
           this.showToast(`บันทึกเป็นเซ็นเชื่อ (IOU)`, 'warning');
         }
 
-        // Auto-sync status update to Google Sheets if enabled
-        if (SheetsService.isConfigured() && SheetsService.isAutoSyncEnabled()) {
-          LocalDB.getNoteById(noteId).then(fullNote => {
-            if (fullNote) return SheetsService.syncBill(fullNote);
-          }).then(() => {
-            this.updateSheetsHeaderStatus();
-          }).catch(err => console.warn('Auto-sync status error:', err));
-        }
+        // Auto-sync status update to Google Sheets in background
+        this.backgroundSyncNote(noteId);
 
         await this.refreshNotes();
       });
@@ -2389,6 +2302,7 @@ class SmartPOSApp {
         const currentQty = parseInt(btn.dataset.qty, 10) || 1;
         await LocalDB.updateItemQuantity(itemId, currentQty + 1);
         await this.refreshNotes();
+        this.backgroundSyncNote(noteId);
       });
     });
 
@@ -2405,6 +2319,7 @@ class SmartPOSApp {
           }
         }
         await this.refreshNotes();
+        this.backgroundSyncNote(noteId);
       });
     });
 
@@ -2416,6 +2331,7 @@ class SmartPOSApp {
           await LocalDB.removeItem(itemId);
           SFX.playPop();
           await this.refreshNotes();
+          this.backgroundSyncNote(noteId);
         }
       });
     });
@@ -2458,6 +2374,7 @@ class SmartPOSApp {
         if (menuSuggestionsBox) menuSuggestionsBox.style.display = 'none';
         if (menuInput) menuInput.focus();
         await this.refreshNotes();
+        this.backgroundSyncNote(noteId);
       };
 
       if (addMenuBtn) {
@@ -2575,6 +2492,7 @@ class SmartPOSApp {
         if (itemInput) itemInput.value = '';
         if (suggestionsBox) suggestionsBox.style.display = 'none';
         await this.refreshNotes();
+        this.backgroundSyncNote(noteId);
       };
 
       if (itemInput && suggestionsBox) {
@@ -2711,105 +2629,30 @@ class SmartPOSApp {
     }
   }
 
-  /* ---------------- Google Sheets Integration Modal Helpers ---------------- */
+  /* ---------------- Google Sheets Background Sync Service ---------------- */
+
+  async backgroundSyncNote(noteId) {
+    if (!SheetsService.isConfigured() || !SheetsService.isAutoSyncEnabled()) return;
+    try {
+      const fullNote = await LocalDB.getNoteById(noteId);
+      if (fullNote) {
+        await SheetsService.syncBill(fullNote);
+      }
+    } catch (err) {
+      console.warn('Background sync note error:', err);
+    }
+  }
 
   openSheetsModal() {
-    SFX.playPop();
-    const modal = document.getElementById('sheetsModal');
-    if (!modal) return;
-
-    const urlInput = document.getElementById('sheetsWebhookUrlInput');
-    const autoSyncToggle = document.getElementById('sheetsAutoSyncToggle');
-
-    if (urlInput) {
-      urlInput.value = SheetsService.getWebhookUrl();
-    }
-    if (autoSyncToggle) {
-      autoSyncToggle.checked = SheetsService.isAutoSyncEnabled();
-    }
-
-    this.updateSheetsModalStatusUI();
-
-    modal.style.display = 'flex';
-    void modal.offsetWidth;
-    modal.classList.add('show');
-    modal.setAttribute('aria-hidden', 'false');
-
-    if (window.lucide) {
-      lucide.createIcons();
-    }
+    // Background mode - no modal UI
   }
 
   updateSheetsModalStatusUI() {
-    const statusCard = document.getElementById('sheetsStatusCard');
-    const titleEl = document.getElementById('sheetsStatusTitle');
-    const subtitleEl = document.getElementById('sheetsStatusSubtitle');
-    const syncBadge = document.getElementById('sheetsLastSyncBadge');
-
-    const isConnected = SheetsService.isConfigured();
-    const lastSync = SheetsService.getLastSyncTime();
-
-    if (statusCard) {
-      statusCard.className = `sheets-status-card ${isConnected ? 'status-connected' : 'status-disconnected'}`;
-    }
-
-    if (titleEl) {
-      titleEl.textContent = isConnected ? 'เชื่อมต่อ Google Sheets แล้ว' : 'ยังไม่ได้เชื่อมต่อ Google Sheets';
-    }
-
-    if (subtitleEl) {
-      subtitleEl.textContent = isConnected 
-        ? 'Webhook URL พร้อมใช้งานและบันทึกข้อมูลเข้าสเปรดชีต'
-        : 'กรุณาใส่ Web App URL และกดทดสอบการเชื่อมต่อ';
-    }
-
-    if (syncBadge) {
-      if (lastSync) {
-        const d = new Date(lastSync);
-        const timeStr = !isNaN(d.getTime()) 
-          ? d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.'
-          : 'ล่าสุด';
-        syncBadge.textContent = `ซิงค์ล่าสุด ${timeStr}`;
-      } else {
-        syncBadge.textContent = 'ยังไม่เคยซิงค์';
-      }
-    }
-
-    // Update 2-table catalog counts and badges
-    const prodCountEl = document.getElementById('sheetsProductsCount');
-    if (prodCountEl) {
-      prodCountEl.textContent = getProductCatalog().length + ' รายการ';
-    }
-
-    const foodCountEl = document.getElementById('sheetsFoodCount');
-    if (foodCountEl) {
-      foodCountEl.textContent = getRestaurantMenu().length + ' รายการ';
-    }
-
-    const catBadge = document.getElementById('catalogsLastSyncBadge');
-    if (catBadge) {
-      const catSync = SheetsService.getCatalogLastSyncTime();
-      if (catSync) {
-        const d = new Date(catSync);
-        catBadge.textContent = 'ซิงค์ชีต ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
-      } else {
-        catBadge.textContent = 'ข้อมูลในเครื่อง';
-      }
-    }
-
-    this.updateSheetsHeaderStatus();
+    // Background mode - no modal UI
   }
 
   updateSheetsHeaderStatus() {
-    const btnHeader = document.getElementById('btnOpenSheetsModal');
-    if (!btnHeader) return;
-    if (SheetsService.isConfigured()) {
-      btnHeader.classList.add('sheets-active');
-      btnHeader.title = 'Google Sheets: เชื่อมต่อแล้ว พร้อมซิงค์';
-    } else {
-      btnHeader.classList.remove('sheets-active');
-      btnHeader.title = 'เชื่อมต่อ Google Sheets API';
-    }
+    // Background mode - no header UI
   }
 
   async copyGoogleAppsScriptCode() {
@@ -3157,11 +3000,9 @@ function createJsonResponse(data){ return ContentService.createTextOutput(JSON.s
       this.showToast(`บันทึก "${item.name}" (x${qty}) ลงในบิลเรียบร้อย`, 'success');
     }
 
-    // Auto-sync note to Google Sheets if configured and enabled
-    if (targetNoteId && SheetsService.isConfigured() && SheetsService.isAutoSyncEnabled()) {
-      LocalDB.getNoteById(targetNoteId).then(fullNote => {
-        if (fullNote) return SheetsService.syncBill(fullNote);
-      }).catch(err => console.warn('Auto-sync from camera error:', err));
+    // Auto-sync note to Google Sheets in background
+    if (targetNoteId) {
+      this.backgroundSyncNote(targetNoteId);
     }
 
     SFX.playChime();
