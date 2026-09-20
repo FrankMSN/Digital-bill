@@ -3861,6 +3861,427 @@ html, body {
   height: 16px;
 }
 
+/* ==========================================================================
+   GOOGLE SHEETS API INTEGRATION STYLES
+   ========================================================================== */
+.btn-sheets-sync {
+  background: #ecfdf5 !important;
+  color: #065f46 !important;
+  border: 1.5px solid #a7f3d0 !important;
+}
+
+.btn-sheets-sync:hover {
+  background: #d1fae5 !important;
+  border-color: #6ee7b7 !important;
+  color: #047857 !important;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+}
+
+.btn-sheets-sync i {
+  color: #10b981 !important;
+}
+
+.sheets-badge {
+  background: #d1fae5 !important;
+  color: #047857 !important;
+}
+
+.sheets-modal-card {
+  max-width: 580px;
+  width: 100%;
+  border-radius: 24px;
+  overflow: hidden;
+}
+
+.sheets-modal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+/* Status Card */
+.sheets-status-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-radius: 14px;
+  gap: 12px;
+}
+
+.sheets-status-card.status-connected {
+  background: #ecfdf5;
+  border: 1.5px solid #a7f3d0;
+  color: #065f46;
+}
+
+.sheets-status-card.status-connected .status-dot {
+  background: #10b981;
+}
+
+.sheets-status-card.status-disconnected {
+  background: #fef2f2;
+  border: 1.5px solid #fecaca;
+  color: #991b1b;
+}
+
+.sheets-status-card.status-disconnected .status-dot {
+  background: #ef4444;
+}
+
+.sheets-status-card .status-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sheets-status-card .status-left strong {
+  display: block;
+  font-size: 0.88rem;
+}
+
+.sheets-status-card .status-left span {
+  display: block;
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
+
+.sheets-sync-time-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: #ffffff;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  white-space: nowrap;
+}
+
+/* Form Group */
+.sheets-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sheets-form-group label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sheets-form-group label i {
+  width: 15px;
+  height: 15px;
+  color: #10b981;
+}
+
+.sheets-input-hint {
+  font-size: 0.74rem;
+  color: #64748b;
+}
+
+/* Toggle Switch */
+.sheets-toggle-box {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.sheets-toggle-box .toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sheets-toggle-box .toggle-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.86rem;
+  color: #0f172a;
+}
+
+.sheets-toggle-box .toggle-title i {
+  width: 15px;
+  height: 15px;
+  color: #f59e0b;
+}
+
+.sheets-toggle-box .toggle-sub {
+  font-size: 0.74rem;
+  color: #64748b;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 46px;
+  height: 26px;
+  min-width: 46px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #cbd5e1;
+  transition: .3s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 34px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .3s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: #10b981;
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(20px);
+}
+
+/* Actions Grid */
+.sheets-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.sheets-btn-full {
+  grid-column: 1 / -1;
+  padding: 12px !important;
+  font-weight: 800 !important;
+  border-radius: 14px !important;
+}
+
+/* Step-by-Step Instructions Guide */
+.sheets-guide-wrapper {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sheets-guide-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.sheets-guide-header i {
+  width: 18px;
+  height: 18px;
+  color: #4f46e5;
+}
+
+.sheets-guide-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #334155;
+}
+
+.sheets-guide-steps li strong {
+  color: #0f172a;
+}
+
+.sheets-guide-steps a {
+  color: #4f46e5;
+  text-decoration: underline;
+}
+
+.sheets-guide-steps code {
+  background: #e2e8f0;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.btn-outline-copy-script {
+  width: 100%;
+  padding: 11px 16px;
+  background: #ffffff;
+  border: 1.5px dashed #10b981;
+  border-radius: 12px;
+  color: #047857;
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-outline-copy-script:hover {
+  background: #ecfdf5;
+  border-color: #059669;
+}
+
+.btn-outline-copy-script:active {
+  transform: scale(0.98);
+}
+
+.btn-outline-copy-script i {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---------------- Dual-Catalog Google Sheets Management Card ---------------- */
+.sheets-catalogs-card {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.catalogs-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.catalogs-card-header .header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: #1e293b;
+}
+
+.catalogs-card-header .header-left i {
+  width: 17px;
+  height: 17px;
+  color: #4f46e5;
+}
+
+.catalogs-sync-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 20px;
+  background: #e0e7ff;
+  color: #3730a3;
+  white-space: nowrap;
+}
+
+.catalogs-summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.cat-stat-box {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.cat-stat-icon {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.cat-stat-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cat-stat-name {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cat-stat-info strong {
+  font-size: 0.95rem;
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.catalogs-actions-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.catalogs-actions-row .btn {
+  flex: 1;
+  min-width: 140px;
+  font-size: 0.78rem;
+  padding: 8px 12px;
+}
+
+.btn-outline-seed {
+  background: #eff6ff;
+  border: 1px solid #93c5fd;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.btn-outline-seed:hover {
+  background: #dbeafe;
+  border-color: #60a5fa;
+  color: #1e40af;
+}
+
+.btn-outline-seed i {
+  color: #2563eb;
+}
+
+
 
 
 

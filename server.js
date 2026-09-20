@@ -18,7 +18,22 @@ const server = http.createServer((req, res) => {
   let reqPath = req.url.split('?')[0];
   if (reqPath === '/') reqPath = '/index.html';
   
-  const filePath = path.join(__dirname, reqPath);
+  let filePath = path.join(__dirname, reqPath);
+  
+  // Smart directory fallback mappings for organized structure
+  const ALIASES = {
+    '/style.css': '/css/style.css',
+    '/app.js': '/js/app.js',
+    '/google_apps_script.js': '/js/google_apps_script.js',
+    '/products.js': '/js/data/products.js',
+    '/restaurant_menu.js': '/js/data/restaurant_menu.js',
+    '/icon.svg': '/assets/icon.svg'
+  };
+
+  if (!fs.existsSync(filePath) && ALIASES[reqPath]) {
+    filePath = path.join(__dirname, ALIASES[reqPath]);
+  }
+
   const ext = path.extname(filePath).toLowerCase();
   const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 

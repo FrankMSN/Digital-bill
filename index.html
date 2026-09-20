@@ -1,21 +1,28 @@
 <!DOCTYPE html>
 <html lang="th">
+
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="description" content="Smart POS & Smart Note Web Application - ระบบจัดการบิลหน้าร้านและบันทึกเซ็นเชื่อ (IOU) แบบ Offline-First 100% สำหรับ Netlify">
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="description"
+    content="Smart POS & Smart Note Web Application - ระบบจัดการบิลหน้าร้านและบันทึกเซ็นเชื่อ (IOU) แบบ Offline-First 100% สำหรับ Netlify">
   <title>Smart POS & Smart Note | ระบบจัดการบิลและเซ็นเชื่อ</title>
 
   <!-- Google Fonts: Plus Jakarta Sans & Prompt for English & Thai typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet">
 
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
 
   <!-- html2pdf.js for exporting client-side note cards directly to PDF -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"
+    integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
   <!-- Tesseract.js for Client-Side AI OCR & Text Recognition -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -26,15 +33,16 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Smart POS">
   <link rel="manifest" href="manifest.json">
-  <link rel="icon" type="image/svg+xml" href="icon.svg">
-  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="icon" type="image/svg+xml" href="assets/icon.svg">
+  <link rel="apple-touch-icon" href="assets/icon.svg">
 
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="css/style.css">
 </head>
+
 <body>
   <!-- App Container -->
   <div id="app" class="app-layout">
-    
+
     <!-- Top Sticky Header -->
     <header class="app-header">
       <div class="header-container">
@@ -54,12 +62,7 @@
         <div class="search-filter-group">
           <div class="search-box">
             <i data-lucide="search" class="search-icon"></i>
-            <input 
-              type="text" 
-              id="customerSearchInput" 
-              placeholder="ค้นหาชื่อลูกค้า, โน้ตบิล..." 
-              autocomplete="off"
-            >
+            <input type="text" id="customerSearchInput" placeholder="ค้นหาชื่อลูกค้า, โน้ตบิล..." autocomplete="off">
             <button id="clearSearchBtn" class="clear-btn" style="display: none;" title="ล้างการค้นหา">
               <i data-lucide="x"></i>
             </button>
@@ -75,8 +78,10 @@
           <!-- Bill Type Filter Tabs -->
           <div class="bill-type-filter-chips">
             <button class="type-chip active" data-bill-type="all">ทุกบิล (<span id="countTypeAll">0</span>)</button>
-            <button class="type-chip chip-retail" data-bill-type="retail"><i data-lucide="store"></i> ร้านค้า (<span id="countRetail">0</span>)</button>
-            <button class="type-chip chip-restaurant" data-bill-type="restaurant"><i data-lucide="utensils"></i> ร้านอาหาร (<span id="countRestaurant">0</span>)</button>
+            <button class="type-chip chip-retail" data-bill-type="retail"><i data-lucide="store"></i> ร้านค้า (<span
+                id="countRetail">0</span>)</button>
+            <button class="type-chip chip-restaurant" data-bill-type="restaurant"><i data-lucide="utensils"></i>
+              ร้านอาหาร (<span id="countRestaurant">0</span>)</button>
           </div>
         </div>
 
@@ -90,6 +95,11 @@
           <button id="btnScanCamera" class="btn btn-gradient-camera" title="เปิดกล้องสแกนสินค้าด้วย AI OCR">
             <i data-lucide="camera"></i>
             <span class="btn-text">สแกน AI (OCR)</span>
+          </button>
+
+          <button id="btnOpenSheetsModal" class="btn btn-sheets-sync" title="เชื่อมต่อ Google Sheets API">
+            <i data-lucide="file-spreadsheet"></i>
+            <span class="btn-text">Google Sheets</span>
           </button>
         </div>
       </div>
@@ -108,7 +118,8 @@
         <div class="metric-divider"></div>
         <div class="metric-item">
           <span class="metric-label"><i data-lucide="database"></i> โหมดจัดเก็บ:</span>
-          <span class="metric-badge offline-badge"><i data-lucide="hard-drive"></i> Offline IndexedDB (Snapshot Locked)</span>
+          <span class="metric-badge offline-badge"><i data-lucide="hard-drive"></i> Offline IndexedDB (Snapshot
+            Locked)</span>
         </div>
       </div>
     </header>
@@ -162,7 +173,8 @@
       <div class="notes-grid-header">
         <div class="section-title-wrap">
           <h2 class="section-title" id="gridDisplayTitle">บิลร้านค้าประจำวัน</h2>
-          <span class="section-hint" id="gridDisplayHint">แสดงเฉพาะบิลของวันนี้ บิลของวันก่อนหน้าจะถูกเก็บเข้าคลังประวัติอัตโนมัติ</span>
+          <span class="section-hint" id="gridDisplayHint">แสดงเฉพาะบิลของวันนี้
+            บิลของวันก่อนหน้าจะถูกเก็บเข้าคลังประวัติอัตโนมัติ</span>
         </div>
         <div class="view-controls">
           <button id="btnSortNotes" class="btn-sort" title="สลับการเรียงลำดับเวลา">
@@ -342,7 +354,8 @@
             <!-- Result Item Card -->
             <div class="scanner-result-card">
               <div class="result-thumb-wrapper">
-                <img id="resultThumbImg" class="result-thumb-img" src="" alt="Thumbnail" onerror="this.src='icon.svg'">
+                <img id="resultThumbImg" class="result-thumb-img" src="" alt="Thumbnail"
+                  onerror="this.src='assets/icon.svg'">
                 <span id="resultTypeMiniTag" class="result-mini-tag tag-retail">สินค้า</span>
               </div>
               <div class="result-details">
@@ -373,7 +386,8 @@
               </div>
               <div class="form-group" id="ocrCustomerNameGroup">
                 <label for="ocrCustomerNameInput">ชื่อลูกค้า / โต๊ะ (กรณีสร้างบิลใหม่):</label>
-                <input type="text" id="ocrCustomerNameInput" list="customerNameDatalist" class="form-input" placeholder="เช่น ลูกค้าโต๊ะ 3, ลูกค้าหน้าร้าน">
+                <input type="text" id="ocrCustomerNameInput" list="customerNameDatalist" class="form-input"
+                  placeholder="เช่น ลูกค้าโต๊ะ 3, ลูกค้าหน้าร้าน">
               </div>
             </div>
 
@@ -393,12 +407,165 @@
       </div>
     </div>
 
+    <!-- ==================== GOOGLE SHEETS API CONNECTOR MODAL ==================== -->
+    <div id="sheetsModal" class="modal-overlay" aria-hidden="true" style="display: none;">
+      <div class="modal-card sheets-modal-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <div class="modal-icon-badge sheets-badge">
+              <i data-lucide="file-spreadsheet"></i>
+            </div>
+            <div>
+              <h3 class="modal-title">เชื่อมต่อ Google Sheets API</h3>
+              <p class="modal-desc">ซิงค์บิลและยอดขายเข้า Google Spreadsheet อัตโนมัติ (ฟรี 100%)</p>
+            </div>
+          </div>
+          <button class="modal-close-btn" data-close="sheetsModal">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+
+        <div class="modal-body sheets-modal-body">
+          <!-- Connection Status Banner -->
+          <div id="sheetsStatusCard" class="sheets-status-card status-disconnected">
+            <div class="status-left">
+              <span class="status-dot"></span>
+              <div>
+                <strong id="sheetsStatusTitle">ยังไม่ได้เชื่อมต่อ Google Sheets</strong>
+                <span id="sheetsStatusSubtitle">กรุณาใส่ Web App URL และกดทดสอบการเชื่อมต่อ</span>
+              </div>
+            </div>
+            <span id="sheetsLastSyncBadge" class="sheets-sync-time-badge">ยังไม่เคยซิงค์</span>
+          </div>
+
+          <!-- Configuration Settings -->
+          <div class="sheets-form-group">
+            <label for="sheetsWebhookUrlInput">
+              <i data-lucide="link"></i> Google Apps Script Web App URL:
+            </label>
+            <div class="sheets-url-input-wrap">
+              <input type="url" id="sheetsWebhookUrlInput" class="form-input"
+                placeholder="https://script.google.com/macros/s/AKfycbx.../exec" autocomplete="off">
+            </div>
+            <span class="sheets-input-hint">คัดลอก URL เว็บแอปที่ได้จากการ Deploy ใน Google Sheets มาวางที่นี่</span>
+          </div>
+
+          <!-- Auto-Sync Toggle -->
+          <div class="sheets-toggle-box">
+            <div class="toggle-text">
+              <div class="toggle-title">
+                <i data-lucide="zap"></i>
+                <strong>ซิงค์ข้อมูลอัตโนมัติ (Auto-Sync)</strong>
+              </div>
+              <span class="toggle-sub">ส่งข้อมูลขึ้นชีตทันทีเมื่อสร้างบิลใหม่ หรือเปลี่ยนสถานะเป็น "จ่ายแล้ว"</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="sheetsAutoSyncToggle">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <!-- Dual-Catalog Google Sheets Tables Card (2 Separate Tables: Retail Products & Food Menu) -->
+          <div class="sheets-catalogs-card">
+            <div class="catalogs-card-header">
+              <div class="header-left">
+                <i data-lucide="layers"></i>
+                <strong>ตารางราคาสินค้าและอาหาร (2 ตารางใน Google Sheets)</strong>
+              </div>
+              <span id="catalogsLastSyncBadge" class="catalogs-sync-badge">ข้อมูลในเครื่อง</span>
+            </div>
+            <div class="catalogs-summary-grid">
+              <div class="cat-stat-box">
+                <span class="cat-stat-icon">🏪</span>
+                <div class="cat-stat-info">
+                  <span class="cat-stat-name">ตารางสินค้า (สินค้า_SmartPOS)</span>
+                  <strong id="sheetsProductsCount">15 รายการ</strong>
+                </div>
+              </div>
+              <div class="cat-stat-box">
+                <span class="cat-stat-icon">🍽️</span>
+                <div class="cat-stat-info">
+                  <span class="cat-stat-name">ตารางอาหาร (อาหาร_SmartPOS)</span>
+                  <strong id="sheetsFoodCount">21 รายการ</strong>
+                </div>
+              </div>
+            </div>
+            <div class="catalogs-actions-row">
+              <button id="btnFetchCatalogsFromSheets" class="btn btn-secondary btn-sm" type="button">
+                <i data-lucide="refresh-cw"></i>
+                <span>ดึงราคาล่าสุดจาก Google Sheets</span>
+              </button>
+              <button id="btnSeedCatalogsToSheets" class="btn btn-outline-seed btn-sm" type="button"
+                title="สร้างและส่งรายการตั้งต้นขึ้น 2 ตารางในชีต">
+                <i data-lucide="arrow-up-circle"></i>
+                <span>สร้าง/ส่งรายการตั้งต้นขึ้น 2 ตาราง</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Actions Bar -->
+          <div class="sheets-actions-grid">
+            <button id="btnTestSheetsConnection" class="btn btn-secondary" type="button">
+              <i data-lucide="radio"></i>
+              <span>ทดสอบการเชื่อมต่อ</span>
+            </button>
+            <button id="btnSaveSheetsSettings" class="btn btn-primary" type="button">
+              <i data-lucide="save"></i>
+              <span>บันทึกการตั้งค่า</span>
+            </button>
+            <button id="btnSyncAllToSheets" class="btn btn-success sheets-btn-full" type="button">
+              <i data-lucide="cloud-upload"></i>
+              <span>ซิงค์บิลทั้งหมดขึ้น Google Sheets ตอนนี้</span>
+            </button>
+          </div>
+
+          <!-- Step-by-Step Connection Instructions Guide -->
+          <div class="sheets-guide-wrapper">
+            <div class="sheets-guide-header">
+              <i data-lucide="book-open"></i>
+              <span>วิธีการเชื่อมต่อ Google Sheets 2 ตาราง (ทำครั้งเดียว)</span>
+            </div>
+            <ol class="sheets-guide-steps">
+              <li>
+                <strong>สร้าง Google Sheet:</strong> ไปที่ <a href="https://sheets.google.com" target="_blank"
+                  rel="noopener">sheets.google.com</a> สร้างสเปรดชีตใหม่ ตั้งชื่อตามต้องการ เช่น <em>Smart POS -
+                  ระบบขายและบิล</em>
+              </li>
+              <li>
+                <strong>เปิด Apps Script:</strong> ที่เมนูด้านบนของ Google Sheet คลิก <strong>ส่วนขยาย
+                  (Extensions)</strong> ➔ <strong>Apps Script</strong>
+              </li>
+              <li>
+                <strong>วางโค้ดสคริปต์:</strong> ลบโค้ดเดิมทั้งหมด แล้วกดปุ่ม <em>"คัดลอกโค้ด Google Apps Script"</em>
+                ด้านล่างนี้ไปวาง จากนั้นกด <strong>บันทึก (Ctrl+S)</strong>
+              </li>
+              <li>
+                <strong>Deploy เว็บแอป:</strong> คลิกปุ่มสีน้ำเงิน <strong>การทำให้ใช้งานได้ (Deploy)</strong> ➔
+                <strong>การทำให้ใช้งานได้รายการใหม่ (New deployment)</strong> ➔ เลือกชนิด <strong>เว็บแอป (Web
+                  app)</strong> ➔ ตั้งค่า <strong>ผู้มีสิทธิ์เข้าถึง (Who has access): ทุกคน (Anyone)</strong> ➔ กด
+                <strong>ทำให้ใช้งานได้ (Deploy)</strong> และให้สิทธิ์เข้าถึง (Authorize)
+              </li>
+              <li>
+                <strong>นำ URL มาวาง:</strong> คัดลอก <em>URL เว็บแอป (Web app URL)</em> มาวางในช่องด้านบน แล้วกด
+                <strong>"ทดสอบการเชื่อมต่อ"</strong> ➔ ระบบจะสร้าง 2 ตาราง <code>สินค้า_SmartPOS</code> และ
+                <code>อาหาร_SmartPOS</code> พร้อมโหลดราคาล่าสุดให้อัตโนมัติทันที!
+              </li>
+            </ol>
+            <button id="btnCopyAppsScriptCode" class="btn btn-outline-copy-script" type="button">
+              <i data-lucide="copy"></i>
+              <span>คัดลอกโค้ด Google Apps Script (เวอร์ชัน 2 ตาราง)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ==================== MOBILE LOAD CONFIRMATION MODAL ==================== -->
     <div id="mobileLoadModal" class="modal-overlay mobile-confirm-overlay" aria-hidden="true" style="display: none;">
       <div class="mobile-confirm-sheet">
         <div class="mobile-app-avatar-wrapper">
           <div class="app-icon-ambient-glow"></div>
-          <img src="icon.svg" alt="Smart POS Logo" class="mobile-app-icon-img" width="76" height="76">
+          <img src="assets/icon.svg" alt="Smart POS Logo" class="mobile-app-icon-img" width="76" height="76">
           <span class="mobile-badge-pro"><i data-lucide="zap"></i> 100% Offline</span>
         </div>
 
@@ -436,7 +603,7 @@
             <i data-lucide="arrow-right-circle"></i>
             <span>ยืนยันการโหลดแอป</span>
           </button>
-          
+
           <button id="btnInstallPwa" class="btn btn-install-pwa" style="display: none;">
             <i data-lucide="download"></i>
             <span>ติดตั้งแอปลงหน้าจอหลัก (PWA)</span>
@@ -456,11 +623,12 @@
     <div id="toastContainer" class="toast-container"></div>
   </div>
 
-  <!-- 1. Product Catalog Configuration (Edit products here) -->
-  <script src="products.js"></script>
-  <!-- 2. Restaurant Food Menu Configuration (Edit food menus here) -->
-  <script src="restaurant_menu.js"></script>
-  <!-- 3. Main Application Script (IndexedDB, Snapshot Logic, UI) -->
-  <script src="app.js"></script>
+  <!-- 1. Product Catalog Offline Fallback (js/data/products.js) -->
+  <script src="js/data/products.js"></script>
+  <!-- 2. Restaurant Food Menu Offline Fallback (js/data/restaurant_menu.js) -->
+  <script src="js/data/restaurant_menu.js"></script>
+  <!-- 3. Main Application Script (js/app.js) -->
+  <script src="js/app.js"></script>
 </body>
+
 </html>

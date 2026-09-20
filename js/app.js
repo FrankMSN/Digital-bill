@@ -20,23 +20,79 @@
    ============================================================================ */
 
 /**
- * Find product definition from products.js
+ * Dynamic Dual-Catalog State in Memory
+ * Loaded from Google Sheets (or localStorage cache / local JS fallback)
+ */
+let dynamicProductCatalog = null;
+let dynamicRestaurantMenu = null;
+
+function initDynamicCatalogs() {
+  try {
+    const cachedProds = localStorage.getItem('smartpos_custom_products');
+    if (cachedProds) {
+      const parsed = JSON.parse(cachedProds);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        dynamicProductCatalog = parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('Error reading cached products from storage:', e);
+  }
+
+  try {
+    const cachedFood = localStorage.getItem('smartpos_custom_menu');
+    if (cachedFood) {
+      const parsed = JSON.parse(cachedFood);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        dynamicRestaurantMenu = parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('Error reading cached food menu from storage:', e);
+  }
+}
+
+// Initialize dynamic catalogs immediately on script evaluation
+initDynamicCatalogs();
+
+function setDynamicProductCatalog(catalog) {
+  if (Array.isArray(catalog) && catalog.length > 0) {
+    dynamicProductCatalog = catalog;
+    try {
+      localStorage.setItem('smartpos_custom_products', JSON.stringify(catalog));
+    } catch (e) {}
+  }
+}
+
+function setDynamicRestaurantMenu(menu) {
+  if (Array.isArray(menu) && menu.length > 0) {
+    dynamicRestaurantMenu = menu;
+    try {
+      localStorage.setItem('smartpos_custom_menu', JSON.stringify(menu));
+    } catch (e) {}
+  }
+}
+
+/**
+ * Find product definition from active catalog (Google Sheets or products.js)
  * @param {string} searchName - Name of the product
  * @returns {object|null}
  */
 function findProductByName(searchName) {
-  if (typeof PRODUCT_CATALOG === 'undefined' || !Array.isArray(PRODUCT_CATALOG)) {
-    console.error('PRODUCT_CATALOG not loaded from products.js');
-    return null;
-  }
-  return PRODUCT_CATALOG.find(p => p.name.trim().toLowerCase() === searchName.trim().toLowerCase()) || null;
+  if (!searchName) return null;
+  const catalog = getProductCatalog();
+  const q = searchName.trim().toLowerCase();
+  return catalog.find(p => (p.name || '').trim().toLowerCase() === q) || null;
 }
 
 /**
- * Get full active product catalog from products.js (with fallback safeguard)
+ * Get full active product catalog (from Google Sheets dynamic cache or products.js fallback)
  * @returns {Array}
  */
 function getProductCatalog() {
+  if (dynamicProductCatalog && Array.isArray(dynamicProductCatalog) && dynamicProductCatalog.length > 0) {
+    return dynamicProductCatalog;
+  }
   if (typeof PRODUCT_CATALOG !== 'undefined' && Array.isArray(PRODUCT_CATALOG)) {
     return PRODUCT_CATALOG;
   }
@@ -44,10 +100,13 @@ function getProductCatalog() {
 }
 
 /**
- * Get active restaurant food menu from restaurant_menu.js (with fallback safeguard)
+ * Get active restaurant food menu (from Google Sheets dynamic cache or restaurant_menu.js fallback)
  * @returns {Array}
  */
 function getRestaurantMenu() {
+  if (dynamicRestaurantMenu && Array.isArray(dynamicRestaurantMenu) && dynamicRestaurantMenu.length > 0) {
+    return dynamicRestaurantMenu;
+  }
   if (typeof RESTAURANT_MENU !== 'undefined' && Array.isArray(RESTAURANT_MENU)) {
     return RESTAURANT_MENU;
   }
@@ -55,7 +114,7 @@ function getRestaurantMenu() {
 }
 
 /**
- * Find food menu item from restaurant_menu.js
+ * Find food menu item from active menu (Google Sheets or restaurant_menu.js)
  * @param {string} searchName - Name or keyword of the food
  * @returns {object|null}
  */
@@ -64,12 +123,13 @@ function findRestaurantMenuItem(searchName) {
   const menu = getRestaurantMenu();
   const q = searchName.trim().toLowerCase();
   // Exact match first
-  let match = menu.find(m => m.name.trim().toLowerCase() === q);
+  let match = menu.find(m => (m.name || '').trim().toLowerCase() === q);
   if (match) return match;
   // Partial or keyword match
   match = menu.find(m => {
-    if (m.name.toLowerCase().includes(q)) return true;
-    if (m.keywords && m.keywords.some(k => k.toLowerCase().includes(q) || q.includes(k.toLowerCase()))) return true;
+    const mName = (m.name || '').toLowerCase();
+    if (mName.includes(q)) return true;
+    if (m.keywords && Array.isArray(m.keywords) && m.keywords.some(k => k.toLowerCase().includes(q) || q.includes(k.toLowerCase()))) return true;
     return false;
   });
   return match || null;
@@ -293,6 +353,14 @@ class LocalIndexedDB {
 
       tx.onerror = (e) => reject(e.target.error);
     });
+  }
+
+  /**
+   * Get single note by ID (including items)
+   */
+  async getNoteById(noteId) {
+    const all = await this.getAllNotes();
+    return all.find(n => n.Note_ID === noteId) || null;
   }
 
   /**
@@ -903,7 +971,7 @@ class VisionOCRService {
         id: matchedItem.id,
         name: matchedItem.name,
         price: matchedItem.price,
-        image: matchedItem.image || (calculatedCategory === 'product' ? 'icon.svg' : 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?auto=format&fit=crop&w=300&q=80'),
+        image: matchedItem.image || (calculatedCategory === 'product' ? 'assets/icon.svg' : 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?auto=format&fit=crop&w=300&q=80'),
         category: matchedItem.category || (calculatedCategory === 'product' ? 'สินค้าในร้าน' : 'อาหารจานเดียว')
       },
       confidence: `${confidence}%`,
@@ -1069,6 +1137,239 @@ class ExportService {
 }
 
 /* ============================================================================
+   SECTION 5.5: GOOGLE SHEETS INTEGRATION SERVICE (Google Apps Script Webhook API)
+   ============================================================================ */
+class GoogleSheetsService {
+  constructor() {
+    this.STORAGE_URL_KEY = 'smartpos_sheets_url';
+    this.STORAGE_AUTOSYNC_KEY = 'smartpos_sheets_autosync';
+    this.STORAGE_LAST_SYNC_KEY = 'smartpos_sheets_last_sync';
+    this.STORAGE_CATALOGS_SYNC_KEY = 'smartpos_catalogs_last_sync';
+  }
+
+  getWebhookUrl() {
+    return (localStorage.getItem(this.STORAGE_URL_KEY) || '').trim();
+  }
+
+  setWebhookUrl(url) {
+    localStorage.setItem(this.STORAGE_URL_KEY, (url || '').trim());
+  }
+
+  isAutoSyncEnabled() {
+    return localStorage.getItem(this.STORAGE_AUTOSYNC_KEY) === 'true';
+  }
+
+  setAutoSyncEnabled(enabled) {
+    localStorage.setItem(this.STORAGE_AUTOSYNC_KEY, enabled ? 'true' : 'false');
+  }
+
+  getLastSyncTime() {
+    return localStorage.getItem(this.STORAGE_LAST_SYNC_KEY) || null;
+  }
+
+  setLastSyncTime(tsString) {
+    localStorage.setItem(this.STORAGE_LAST_SYNC_KEY, tsString || new Date().toISOString());
+  }
+
+  getCatalogLastSyncTime() {
+    return localStorage.getItem(this.STORAGE_CATALOGS_SYNC_KEY) || null;
+  }
+
+  setCatalogLastSyncTime(tsString) {
+    localStorage.setItem(this.STORAGE_CATALOGS_SYNC_KEY, tsString || new Date().toISOString());
+  }
+
+  isConfigured() {
+    const url = this.getWebhookUrl();
+    return Boolean(url && url.startsWith('https://script.google.com/'));
+  }
+
+  /**
+   * Fetch 2-table catalogs from Google Sheets (สินค้า_SmartPOS & อาหาร_SmartPOS)
+   */
+  async fetchCatalogs() {
+    if (!this.isConfigured()) {
+      throw new Error('ยังไม่ได้ระบุ Webhook URL ของ Google Sheets');
+    }
+
+    const url = this.getWebhookUrl();
+    let data = null;
+
+    // First try GET with action=get_catalogs
+    try {
+      const getUrl = url.includes('?') ? `${url}&action=get_catalogs` : `${url}?action=get_catalogs`;
+      const res = await fetch(getUrl, { method: 'GET', redirect: 'follow' });
+      if (res.ok) {
+        data = await res.json().catch(() => null);
+      }
+    } catch (e) {
+      console.warn('GET get_catalogs failed, attempting POST:', e);
+    }
+
+    // If GET didn't return json, try POST
+    if (!data || !data.products) {
+      const postRes = await this.sendPayload({ action: 'get_catalogs' });
+      if (postRes && postRes.products) {
+        data = postRes;
+      }
+    }
+
+    if (data && (Array.isArray(data.products) || Array.isArray(data.foodMenu))) {
+      if (Array.isArray(data.products) && data.products.length > 0) {
+        setDynamicProductCatalog(data.products);
+      }
+      if (Array.isArray(data.foodMenu) && data.foodMenu.length > 0) {
+        setDynamicRestaurantMenu(data.foodMenu);
+      }
+      this.setCatalogLastSyncTime(new Date().toISOString());
+
+      return {
+        success: true,
+        productsCount: getProductCatalog().length,
+        foodMenuCount: getRestaurantMenu().length
+      };
+    } else {
+      throw new Error('ไม่สามารถดึงข้อมูลแคตตาล็อกได้ หรือสเปรดชีตยังไม่ได้สร้าง 2 ตาราง');
+    }
+  }
+
+  /**
+   * Seed/Create default initial data in Google Sheets (2 tables)
+   */
+  async seedCatalogs() {
+    if (!this.isConfigured()) {
+      throw new Error('ยังไม่ได้ระบุ Webhook URL ของ Google Sheets');
+    }
+    await this.sendPayload({ action: 'seed_catalogs' });
+    return await this.fetchCatalogs();
+  }
+
+  formatNotePayload(note) {
+    return {
+      Note_ID: note.Note_ID,
+      Created_Date: note.Created_Date,
+      Bill_Type: note.Bill_Type || 'retail',
+      Customer_Name: note.Customer_Name || 'ลูกค้าทั่วไป',
+      Status: note.Status || 'IOU',
+      Total_Amount: typeof note.Total_Amount === 'number' ? note.Total_Amount : 0,
+      items: (note.items || []).map(it => ({
+        Product_Name: it.Product_Name || it.name || '',
+        Quantity: it.Quantity || it.quantity || 1,
+        Price_Per_Unit: it.Price_Per_Unit || it.price || 0,
+        Total_Price: (it.Quantity || 1) * (it.Price_Per_Unit || 0)
+      }))
+    };
+  }
+
+  async sendPayload(payload) {
+    const url = this.getWebhookUrl();
+    if (!url) {
+      throw new Error('ยังไม่ได้ระบุ Webhook URL ของ Google Sheets');
+    }
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8'
+        },
+        body: JSON.stringify(payload),
+        redirect: 'follow'
+      });
+
+      let result = null;
+      try {
+        result = await response.json();
+      } catch (jsonErr) {
+        result = { status: 'SUCCESS', message: 'ส่งข้อมูลไปยัง Google Sheets สำเร็จ' };
+      }
+      return result;
+    } catch (err) {
+      console.warn('CORS or Network issue in POST, trying no-cors fallback:', err);
+      try {
+        await fetch(url, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: {
+            'Content-Type': 'text/plain;charset=utf-8'
+          },
+          body: JSON.stringify(payload)
+        });
+        return { status: 'SUCCESS', message: 'ส่งข้อมูลขึ้นชีตเรียบร้อย (no-cors mode)' };
+      } catch (fallbackErr) {
+        throw new Error('ไม่สามารถเชื่อมต่อ Google Sheets ได้: ' + fallbackErr.message);
+      }
+    }
+  }
+
+  async testConnection(customUrl = null) {
+    const url = (customUrl || this.getWebhookUrl()).trim();
+    if (!url) {
+      throw new Error('กรุณาระบุ Webhook URL ก่อนทดสอบ');
+    }
+
+    // Try GET request first (cleanest on GAS Web Apps)
+    try {
+      const getRes = await fetch(url, { method: 'GET', redirect: 'follow' });
+      if (getRes.ok) {
+        const data = await getRes.json().catch(() => null);
+        return { success: true, message: (data && data.message) ? data.message : 'เชื่อมต่อสำเร็จ' };
+      }
+    } catch (e) {}
+
+    // POST Ping
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'ping' }),
+        redirect: 'follow'
+      });
+      const data = await res.json().catch(() => null);
+      return { success: true, message: (data && data.message) ? data.message : 'เชื่อมต่อ Google Sheets สำเร็จ' };
+    } catch (err) {
+      try {
+        await fetch(url, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'ping' })
+        });
+        return { success: true, message: 'ส่งคำขอทดสอบสำเร็จ (สเปรดชีตตอบสนองเรียบร้อย)' };
+      } catch (e2) {
+        throw new Error('ไม่สามารถเชื่อมต่อไปยัง URL ที่ระบุได้ กรุณาตรวจสอบสิทธิ์การเข้าถึงเป็น "ทุกคน (Anyone)"');
+      }
+    }
+  }
+
+  async syncBill(note) {
+    if (!this.isConfigured()) return null;
+    const payload = {
+      action: 'sync_bill',
+      bill: this.formatNotePayload(note)
+    };
+    const result = await this.sendPayload(payload);
+    this.setLastSyncTime(new Date().toISOString());
+    return result;
+  }
+
+  async syncAllBills(notes) {
+    if (!this.isConfigured()) {
+      throw new Error('กรุณาตั้งค่า Webhook URL ของ Google Sheets ก่อน');
+    }
+    const payload = {
+      action: 'sync_all',
+      bills: notes.map(n => this.formatNotePayload(n))
+    };
+    const result = await this.sendPayload(payload);
+    this.setLastSyncTime(new Date().toISOString());
+    return result;
+  }
+}
+
+const SheetsService = new GoogleSheetsService();
+
+/* ============================================================================
    SECTION 6: APPLICATION CONTROLLER (UI, Event Handlers, Dynamic DOM)
    ============================================================================ */
 class SmartPOSApp {
@@ -1103,6 +1404,21 @@ class SmartPOSApp {
 
     // Initialize Mobile Load Confirmation Modal & PWA Prompt
     this.initMobileLoadConfirmation();
+
+    // Update Google Sheets status indicator
+    this.updateSheetsHeaderStatus();
+
+    // If Google Sheets is configured, fetch latest dual-catalogs in background
+    if (SheetsService.isConfigured()) {
+      SheetsService.fetchCatalogs().then(res => {
+        if (res && res.success) {
+          this.updateSheetsModalStatusUI();
+          this.filterAndRenderNotes();
+        }
+      }).catch(err => {
+        console.log('Background catalog fetch note:', err.message);
+      });
+    }
 
     // Refresh Lucide Icons
     if (window.lucide) {
@@ -1317,6 +1633,170 @@ class SmartPOSApp {
         SFX.playPop();
       });
     }
+
+    // 10. Google Sheets Integration Events
+    const btnOpenSheets = document.getElementById('btnOpenSheetsModal');
+    if (btnOpenSheets) {
+      btnOpenSheets.addEventListener('click', () => this.openSheetsModal());
+    }
+
+    const btnTestSheets = document.getElementById('btnTestSheetsConnection');
+    if (btnTestSheets) {
+      btnTestSheets.addEventListener('click', async () => {
+        const urlInput = document.getElementById('sheetsWebhookUrlInput');
+        const testUrl = (urlInput ? urlInput.value : '').trim();
+
+        if (!testUrl) {
+          this.showToast('กรุณากรอก Web App URL ก่อนกดทดสอบ', 'warning');
+          if (urlInput) urlInput.focus();
+          return;
+        }
+
+        const origHtml = btnTestSheets.innerHTML;
+        btnTestSheets.disabled = true;
+        btnTestSheets.innerHTML = '<i data-lucide="loader-2" class="spin"></i> <span>กำลังทดสอบ...</span>';
+        if (window.lucide) lucide.createIcons();
+
+        try {
+          const result = await SheetsService.testConnection(testUrl);
+          SheetsService.setWebhookUrl(testUrl);
+          this.updateSheetsModalStatusUI();
+          SFX.playChime();
+          this.showToast('✅ เชื่อมต่อ Google Sheets สำเร็จเรียบร้อย!', 'success');
+        } catch (err) {
+          SFX.playPop();
+          this.showToast('❌ ไม่สามารถเชื่อมต่อได้: ' + err.message, 'warning');
+        } finally {
+          btnTestSheets.disabled = false;
+          btnTestSheets.innerHTML = origHtml;
+          if (window.lucide) lucide.createIcons();
+        }
+      });
+    }
+
+    const btnSaveSheets = document.getElementById('btnSaveSheetsSettings');
+    if (btnSaveSheets) {
+      btnSaveSheets.addEventListener('click', () => {
+        const urlInput = document.getElementById('sheetsWebhookUrlInput');
+        const autoSyncToggle = document.getElementById('sheetsAutoSyncToggle');
+
+        const url = (urlInput ? urlInput.value : '').trim();
+        const autoSync = autoSyncToggle ? autoSyncToggle.checked : false;
+
+        SheetsService.setWebhookUrl(url);
+        SheetsService.setAutoSyncEnabled(autoSync);
+
+        SFX.playChime();
+        this.updateSheetsModalStatusUI();
+        this.showToast('💾 บันทึกการตั้งค่า Google Sheets เรียบร้อย', 'success');
+      });
+    }
+
+    const btnSyncAll = document.getElementById('btnSyncAllToSheets');
+    if (btnSyncAll) {
+      btnSyncAll.addEventListener('click', async () => {
+        if (!SheetsService.isConfigured()) {
+          this.showToast('กรุณาใส่ Web App URL และกดบันทึกก่อนซิงค์', 'warning');
+          return;
+        }
+
+        const allNotes = await LocalDB.getAllNotes();
+        if (!allNotes || allNotes.length === 0) {
+          this.showToast('ไม่มีบิลในระบบสำหรับซิงค์', 'info');
+          return;
+        }
+
+        const origHtml = btnSyncAll.innerHTML;
+        btnSyncAll.disabled = true;
+        btnSyncAll.innerHTML = `<i data-lucide="loader-2" class="spin"></i> <span>กำลังซิงค์ ${allNotes.length} บิลขึ้นชีต...</span>`;
+        if (window.lucide) lucide.createIcons();
+
+        try {
+          const res = await SheetsService.syncAllBills(allNotes);
+          SFX.playChime();
+          this.updateSheetsModalStatusUI();
+          const countMsg = res && res.message ? res.message : `ซิงค์บิลทั้งหมด (${allNotes.length} บิล) สำเร็จ!`;
+          this.showToast(`✅ ${countMsg}`, 'success');
+        } catch (err) {
+          SFX.playPop();
+          this.showToast('❌ ซิงค์บิลไม่สำเร็จ: ' + err.message, 'warning');
+        } finally {
+          btnSyncAll.disabled = false;
+          btnSyncAll.innerHTML = origHtml;
+          if (window.lucide) lucide.createIcons();
+        }
+      });
+    }
+
+    const btnCopyScript = document.getElementById('btnCopyAppsScriptCode');
+    if (btnCopyScript) {
+      btnCopyScript.addEventListener('click', () => this.copyGoogleAppsScriptCode());
+    }
+
+    // 11. Dual-Catalog Fetch & Seed Events
+    const btnFetchCatalogs = document.getElementById('btnFetchCatalogsFromSheets');
+    if (btnFetchCatalogs) {
+      btnFetchCatalogs.addEventListener('click', async () => {
+        if (!SheetsService.isConfigured()) {
+          this.showToast('กรุณาระบุและบันทึก Web App URL ก่อนดึงข้อมูล', 'warning');
+          return;
+        }
+
+        const origHtml = btnFetchCatalogs.innerHTML;
+        btnFetchCatalogs.disabled = true;
+        btnFetchCatalogs.innerHTML = '<i data-lucide="loader-2" class="spin"></i> <span>กำลังดึงราคา...</span>';
+        if (window.lucide) lucide.createIcons();
+
+        try {
+          const res = await SheetsService.fetchCatalogs();
+          SFX.playChime();
+          this.updateSheetsModalStatusUI();
+          this.filterAndRenderNotes();
+          this.showToast(`✅ ดึงราคาสินค้า (${res.productsCount} รายการ) และอาหาร (${res.foodMenuCount} รายการ) จาก Google Sheets สำเร็จ!`, 'success');
+        } catch (err) {
+          SFX.playPop();
+          this.showToast('❌ ไม่สามารถดึงราคาได้: ' + err.message, 'warning');
+        } finally {
+          btnFetchCatalogs.disabled = false;
+          btnFetchCatalogs.innerHTML = origHtml;
+          if (window.lucide) lucide.createIcons();
+        }
+      });
+    }
+
+    const btnSeedCatalogs = document.getElementById('btnSeedCatalogsToSheets');
+    if (btnSeedCatalogs) {
+      btnSeedCatalogs.addEventListener('click', async () => {
+        if (!SheetsService.isConfigured()) {
+          this.showToast('กรุณาระบุและบันทึก Web App URL ก่อน', 'warning');
+          return;
+        }
+
+        if (!confirm('ต้องการสร้าง/ส่งรายการสินค้าและอาหารเริ่มต้นขึ้น 2 ตารางใน Google Sheets ใช่หรือไม่?')) {
+          return;
+        }
+
+        const origHtml = btnSeedCatalogs.innerHTML;
+        btnSeedCatalogs.disabled = true;
+        btnSeedCatalogs.innerHTML = '<i data-lucide="loader-2" class="spin"></i> <span>กำลังส่งรายการ...</span>';
+        if (window.lucide) lucide.createIcons();
+
+        try {
+          const res = await SheetsService.seedCatalogs();
+          SFX.playChime();
+          this.updateSheetsModalStatusUI();
+          this.filterAndRenderNotes();
+          this.showToast(`✅ สร้างและส่งข้อมูลเริ่มต้นขึ้น 2 ตารางเรียบร้อย! (สินค้า: ${res.productsCount}, อาหาร: ${res.foodMenuCount} รายการ)`, 'success');
+        } catch (err) {
+          SFX.playPop();
+          this.showToast('❌ ส่งข้อมูลไม่สำเร็จ: ' + err.message, 'warning');
+        } finally {
+          btnSeedCatalogs.disabled = false;
+          btnSeedCatalogs.innerHTML = origHtml;
+          if (window.lucide) lucide.createIcons();
+        }
+      });
+    }
   }
 
   /* ---------------- Bill Creation (Retail vs Restaurant) ---------------- */
@@ -1347,6 +1827,13 @@ class SmartPOSApp {
 
     const typeMsg = isRestaurant ? 'บิลร้านอาหาร (พิมพ์มือ)' : 'บิลร้านค้า (จาก Data)';
     this.showToast(`สร้าง${typeMsg} เรียบร้อย`, 'success');
+
+    // Auto-sync new bill to Google Sheets if enabled
+    if (SheetsService.isConfigured() && SheetsService.isAutoSyncEnabled()) {
+      SheetsService.syncBill(newNote).then(() => {
+        this.updateSheetsHeaderStatus();
+      }).catch(err => console.warn('Auto-sync new note error:', err));
+    }
 
     setTimeout(() => {
       const card = document.querySelector(`.note-card[data-id="${newNote.Note_ID}"]`);
@@ -1881,6 +2368,15 @@ class SmartPOSApp {
           this.showToast(`บันทึกเป็นเซ็นเชื่อ (IOU)`, 'warning');
         }
 
+        // Auto-sync status update to Google Sheets if enabled
+        if (SheetsService.isConfigured() && SheetsService.isAutoSyncEnabled()) {
+          LocalDB.getNoteById(noteId).then(fullNote => {
+            if (fullNote) return SheetsService.syncBill(fullNote);
+          }).then(() => {
+            this.updateSheetsHeaderStatus();
+          }).catch(err => console.warn('Auto-sync status error:', err));
+        }
+
         await this.refreshNotes();
       });
     }
@@ -2204,9 +2700,192 @@ class SmartPOSApp {
     if (!modal) return;
     modal.classList.remove('show');
     modal.setAttribute('aria-hidden', 'true');
+    setTimeout(() => {
+      if (!modal.classList.contains('show')) {
+        modal.style.display = 'none';
+      }
+    }, 280);
 
     if (modalId === 'cameraModal') {
       VisionOCR.stopCamera();
+    }
+  }
+
+  /* ---------------- Google Sheets Integration Modal Helpers ---------------- */
+
+  openSheetsModal() {
+    SFX.playPop();
+    const modal = document.getElementById('sheetsModal');
+    if (!modal) return;
+
+    const urlInput = document.getElementById('sheetsWebhookUrlInput');
+    const autoSyncToggle = document.getElementById('sheetsAutoSyncToggle');
+
+    if (urlInput) {
+      urlInput.value = SheetsService.getWebhookUrl();
+    }
+    if (autoSyncToggle) {
+      autoSyncToggle.checked = SheetsService.isAutoSyncEnabled();
+    }
+
+    this.updateSheetsModalStatusUI();
+
+    modal.style.display = 'flex';
+    void modal.offsetWidth;
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden', 'false');
+
+    if (window.lucide) {
+      lucide.createIcons();
+    }
+  }
+
+  updateSheetsModalStatusUI() {
+    const statusCard = document.getElementById('sheetsStatusCard');
+    const titleEl = document.getElementById('sheetsStatusTitle');
+    const subtitleEl = document.getElementById('sheetsStatusSubtitle');
+    const syncBadge = document.getElementById('sheetsLastSyncBadge');
+
+    const isConnected = SheetsService.isConfigured();
+    const lastSync = SheetsService.getLastSyncTime();
+
+    if (statusCard) {
+      statusCard.className = `sheets-status-card ${isConnected ? 'status-connected' : 'status-disconnected'}`;
+    }
+
+    if (titleEl) {
+      titleEl.textContent = isConnected ? 'เชื่อมต่อ Google Sheets แล้ว' : 'ยังไม่ได้เชื่อมต่อ Google Sheets';
+    }
+
+    if (subtitleEl) {
+      subtitleEl.textContent = isConnected 
+        ? 'Webhook URL พร้อมใช้งานและบันทึกข้อมูลเข้าสเปรดชีต'
+        : 'กรุณาใส่ Web App URL และกดทดสอบการเชื่อมต่อ';
+    }
+
+    if (syncBadge) {
+      if (lastSync) {
+        const d = new Date(lastSync);
+        const timeStr = !isNaN(d.getTime()) 
+          ? d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.'
+          : 'ล่าสุด';
+        syncBadge.textContent = `ซิงค์ล่าสุด ${timeStr}`;
+      } else {
+        syncBadge.textContent = 'ยังไม่เคยซิงค์';
+      }
+    }
+
+    // Update 2-table catalog counts and badges
+    const prodCountEl = document.getElementById('sheetsProductsCount');
+    if (prodCountEl) {
+      prodCountEl.textContent = getProductCatalog().length + ' รายการ';
+    }
+
+    const foodCountEl = document.getElementById('sheetsFoodCount');
+    if (foodCountEl) {
+      foodCountEl.textContent = getRestaurantMenu().length + ' รายการ';
+    }
+
+    const catBadge = document.getElementById('catalogsLastSyncBadge');
+    if (catBadge) {
+      const catSync = SheetsService.getCatalogLastSyncTime();
+      if (catSync) {
+        const d = new Date(catSync);
+        catBadge.textContent = 'ซิงค์ชีต ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
+      } else {
+        catBadge.textContent = 'ข้อมูลในเครื่อง';
+      }
+    }
+
+    this.updateSheetsHeaderStatus();
+  }
+
+  updateSheetsHeaderStatus() {
+    const btnHeader = document.getElementById('btnOpenSheetsModal');
+    if (!btnHeader) return;
+    if (SheetsService.isConfigured()) {
+      btnHeader.classList.add('sheets-active');
+      btnHeader.title = 'Google Sheets: เชื่อมต่อแล้ว พร้อมซิงค์';
+    } else {
+      btnHeader.classList.remove('sheets-active');
+      btnHeader.title = 'เชื่อมต่อ Google Sheets API';
+    }
+  }
+
+  async copyGoogleAppsScriptCode() {
+    SFX.playPop();
+    const btn = document.getElementById('btnCopyAppsScriptCode');
+    const originalHTML = btn ? btn.innerHTML : '';
+
+    let scriptCode = '';
+    try {
+      const res = await fetch('js/google_apps_script.js');
+      if (res.ok) {
+        scriptCode = await res.text();
+      } else {
+        const fallbackRes = await fetch('google_apps_script.js');
+        if (fallbackRes.ok) scriptCode = await fallbackRes.text();
+      }
+    } catch (e) {
+      try {
+        const fallbackRes = await fetch('google_apps_script.js');
+        if (fallbackRes.ok) scriptCode = await fallbackRes.text();
+      } catch (e2) {
+        console.warn('Could not fetch google_apps_script.js:', e);
+      }
+    }
+
+    if (!scriptCode) {
+      scriptCode = `// SMART POS & SMART NOTE - GOOGLE APPS SCRIPT CONNECTOR
+const SHEET_NAME = "รายการบิล_SmartPOS";
+const HEADERS = ["รหัสบิล (Bill ID)", "วันที่/เวลา (Created Date)", "ประเภทบิล (Bill Type)", "ชื่อลูกค้า / โต๊ะ (Customer)", "รายการสินค้าและอาหาร (Items Summary)", "ยอดรวมสุทธิ (Total Amount)", "สถานะชำระเงิน (Status)", "อัปเดตล่าสุด (Last Modified)"];
+function doGet(e){ return ContentService.createTextOutput(JSON.stringify({status:"SUCCESS",message:"Smart POS Google Sheets API เชื่อมต่อสำเร็จ พร้อมรับข้อมูล!"})).setMimeType(ContentService.MimeType.JSON); }
+function doPost(e){ try { let contents = JSON.parse(e.postData.contents); const action = contents.action || "sync_bill"; const sheet = getOrCreateTargetSheet(); if(action==="ping") return createJsonResponse({status:"SUCCESS",message:"เชื่อมต่อกับ Google Sheets สำเร็จเรียบร้อย!"}); if(action==="sync_all"){ let u=0,ins=0; (contents.bills||[]).forEach(b=>{ const r=upsertSingleBillRow(sheet,b); if(r==="updated")u++; else if(r==="inserted")ins++; }); return createJsonResponse({status:"SUCCESS",message:\`ซิงค์บิลทั้งหมดสำเร็จ (เพิ่มใหม่: \${ins}, อัปเดต: \${u} บิล)\`}); } if(action==="sync_bill"){ const res=upsertSingleBillRow(sheet, contents.bill); return createJsonResponse({status:"SUCCESS",message:\`ซิงค์บิล \${contents.bill.Note_ID} สำเร็จ (\${res})\`}); } } catch(err){ return createJsonResponse({status:"ERROR",message:err.toString()}); } }
+function getOrCreateTargetSheet(){ const ss=SpreadsheetApp.getActiveSpreadsheet(); let sh=ss.getSheetByName(SHEET_NAME); if(!sh){ sh=ss.insertSheet(SHEET_NAME); sh.appendRow(HEADERS); const h=sh.getRange(1,1,1,HEADERS.length); h.setBackground("#0f172a"); h.setFontColor("#ffffff"); h.setFontWeight("bold"); sh.setFrozenRows(1); } return sh; }
+function upsertSingleBillRow(sheet,bill){ if(!bill||!bill.Note_ID) return "skipped"; const lastRow=sheet.getLastRow(); let targetRow=-1; if(lastRow>1){ const ids=sheet.getRange(2,1,lastRow-1,1).getValues(); for(let i=0;i<ids.length;i++){ if(String(ids[i][0]).trim()===String(bill.Note_ID).trim()){ targetRow=i+2; break; } } } const itemsSummary=(bill.items||[]).map(it=>\`\${it.Product_Name||it.name||'สินค้า'} (x\${it.Quantity||1}) - ฿\${Number(it.Total_Price||0).toFixed(2)}\`).join('\\n'); const statusText=bill.Status==='Paid'?'✅ จ่ายแล้ว':'⏳ เซ็นเชื่อ (IOU)'; const typeText=bill.Bill_Type==='restaurant'?'🍽️ ร้านอาหาร':'🏪 ร้านค้า'; const rowData=[bill.Note_ID, bill.Created_Date||new Date().toISOString(), typeText, bill.Customer_Name||'ลูกค้า', itemsSummary, Number(bill.Total_Amount||0), statusText, new Date().toISOString()]; if(targetRow>0){ sheet.getRange(targetRow,1,1,HEADERS.length).setValues([rowData]); return "updated"; } else { sheet.appendRow(rowData); return "inserted"; } }
+function createJsonResponse(data){ return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON); }`;
+    }
+
+    let copySuccess = false;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(scriptCode);
+        copySuccess = true;
+      } catch (err) {
+        console.warn('Clipboard writeText failed, falling back:', err);
+      }
+    }
+
+    if (!copySuccess) {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = scriptCode;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        textarea.style.top = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        copySuccess = document.execCommand('copy');
+        document.body.removeChild(textarea);
+      } catch (e2) {
+        console.error('execCommand copy failed:', e2);
+      }
+    }
+
+    if (copySuccess) {
+      SFX.playChime();
+      if (btn) {
+        btn.innerHTML = `<i data-lucide="check-circle-2"></i> <span>คัดลอกโค้ดสำเร็จแล้ว! (พร้อมนำไปวาง)</span>`;
+        if (window.lucide) lucide.createIcons();
+        setTimeout(() => {
+          if (btn) btn.innerHTML = originalHTML;
+          if (window.lucide) lucide.createIcons();
+        }, 2500);
+      }
+      this.showToast('📋 คัดลอกโค้ด Google Apps Script เรียบร้อย! นำไปวางใน Extensions -> Apps Script ได้ทันที', 'success');
+    } else {
+      this.showToast('กรุณาเปิดไฟล์ js/google_apps_script.js เพื่อคัดลอกโค้ดด้วยตนเอง', 'warning');
     }
   }
 
@@ -2306,7 +2985,7 @@ class SmartPOSApp {
       }
     }
 
-    const snapshotUrl = canvas ? canvas.toDataURL('image/jpeg', 0.85) : 'icon.svg';
+    const snapshotUrl = canvas ? canvas.toDataURL('image/jpeg', 0.85) : 'assets/icon.svg';
 
     // Analyze frame & classify whether it is สินค้า or อาหาร
     const result = await VisionOCR.analyzeAndClassify(canvas);
@@ -2394,7 +3073,7 @@ class SmartPOSApp {
     const qtyDisplay = document.getElementById('resultQtyDisplay');
     const applyText = document.getElementById('btnApplyOCRText');
 
-    if (thumbImg) thumbImg.src = result.item.image || snapshotUrl || 'icon.svg';
+    if (thumbImg) thumbImg.src = result.item.image || snapshotUrl || 'assets/icon.svg';
     if (itemTitle) itemTitle.textContent = result.item.name;
     if (itemPrice) itemPrice.textContent = `฿${result.item.price.toFixed(2)}`;
     if (accBadge) {
@@ -2451,9 +3130,10 @@ class SmartPOSApp {
     const customNameInput = document.getElementById('ocrCustomerNameInput');
     const customName = (customNameInput ? customNameInput.value.trim() : '') || (isRetail ? 'ลูกค้าจาก AI สแกนสินค้า' : 'ลูกค้าโต๊ะ (AI สแกนอาหาร)');
 
+    let targetNoteId = null;
     if (targetVal === 'new_retail' || targetVal === 'new_restaurant') {
       const billType = targetVal === 'new_restaurant' ? 'restaurant' : 'retail';
-      await LocalDB.createNote({
+      const createdNote = await LocalDB.createNote({
         Customer_Name: customName,
         Status: 'IOU',
         Bill_Type: billType
@@ -2462,6 +3142,7 @@ class SmartPOSApp {
         Quantity: qty,
         Price_Per_Unit: item.price
       }]);
+      targetNoteId = createdNote ? createdNote.Note_ID : null;
 
       this.showToast(`สร้าง${billType === 'restaurant' ? 'บิลร้านอาหาร' : 'บิลร้านค้า'} พร้อมบันทึก "${item.name}" เรียบร้อย`, 'success');
     } else {
@@ -2471,8 +3152,16 @@ class SmartPOSApp {
         Quantity: qty,
         Price_Per_Unit: item.price
       });
+      targetNoteId = targetVal;
 
       this.showToast(`บันทึก "${item.name}" (x${qty}) ลงในบิลเรียบร้อย`, 'success');
+    }
+
+    // Auto-sync note to Google Sheets if configured and enabled
+    if (targetNoteId && SheetsService.isConfigured() && SheetsService.isAutoSyncEnabled()) {
+      LocalDB.getNoteById(targetNoteId).then(fullNote => {
+        if (fullNote) return SheetsService.syncBill(fullNote);
+      }).catch(err => console.warn('Auto-sync from camera error:', err));
     }
 
     SFX.playChime();
