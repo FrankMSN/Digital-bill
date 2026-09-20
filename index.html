@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Smart POS & Smart Note Web Application - ระบบจัดการบิลหน้าร้านและบันทึกเซ็นเชื่อ (IOU) แบบ Offline-First 100% สำหรับ Netlify">
+  <title>Smart POS & Smart Note | ระบบจัดการบิลและเซ็นเชื่อ</title>
+
+  <!-- Google Fonts: Plus Jakarta Sans & Prompt for English & Thai typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- html2pdf.js for exporting client-side note cards directly to PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- App Container -->
+  <div id="app" class="app-layout">
+    
+    <!-- Top Sticky Header -->
+    <header class="app-header">
+      <div class="header-container">
+        <!-- Logo & Brand -->
+        <div class="brand-group" id="brandLogo">
+          <div class="brand-icon-wrapper">
+            <i data-lucide="receipt-text" class="brand-icon"></i>
+            <span class="pulse-indicator"></span>
+          </div>
+          <div class="brand-text">
+            <h1 class="brand-title">Smart POS <span class="badge-tag">Note</span></h1>
+            <p class="brand-subtitle">บิล & จัดการเซ็นเชื่อ (100% Offline)</p>
+          </div>
+        </div>
+
+        <!-- Search Bar & Filter Controls -->
+        <div class="search-filter-group">
+          <div class="search-box">
+            <i data-lucide="search" class="search-icon"></i>
+            <input 
+              type="text" 
+              id="customerSearchInput" 
+              placeholder="ค้นหาชื่อลูกค้า, โน้ตบิล..." 
+              autocomplete="off"
+            >
+            <button id="clearSearchBtn" class="clear-btn" style="display: none;" title="ล้างการค้นหา">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+
+          <!-- Status Filter Tabs -->
+          <div class="filter-chips">
+            <button class="chip active" data-filter="all">ทั้งหมด (<span id="countAll">0</span>)</button>
+            <button class="chip chip-iou" data-filter="IOU">เซ็นเชื่อ (<span id="countIOU">0</span>)</button>
+            <button class="chip chip-paid" data-filter="Paid">จ่ายแล้ว (<span id="countPaid">0</span>)</button>
+          </div>
+        </div>
+
+        <!-- Action Controls -->
+        <div class="header-actions">
+          <button id="btnNewNote" class="btn btn-primary" title="สร้างสมาร์ทโน้ตบิลใหม่">
+            <i data-lucide="plus-circle"></i>
+            <span class="btn-text">สร้างบิลใหม่</span>
+          </button>
+
+          <button id="btnScanCamera" class="btn btn-gradient-camera" title="เปิดกล้องสแกนสินค้าด้วย AI OCR">
+            <i data-lucide="camera"></i>
+            <span class="btn-text">สแกน AI (OCR)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Metrics Bar -->
+      <div class="metrics-bar">
+        <div class="metric-item">
+          <span class="metric-label"><i data-lucide="clock-alert"></i> ยอดค้างชำระ (เซ็นไว้):</span>
+          <span class="metric-value value-iou" id="totalOutstandingAmount">฿0.00</span>
+        </div>
+        <div class="metric-divider"></div>
+        <div class="metric-item">
+          <span class="metric-label"><i data-lucide="check-circle-2"></i> ยอดรับชำระแล้ว:</span>
+          <span class="metric-value value-paid" id="totalPaidAmount">฿0.00</span>
+        </div>
+        <div class="metric-divider"></div>
+        <div class="metric-item">
+          <span class="metric-label"><i data-lucide="database"></i> โหมดจัดเก็บ:</span>
+          <span class="metric-badge offline-badge"><i data-lucide="hard-drive"></i> Offline IndexedDB (Snapshot Locked)</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Global Customer Name Datalist (Dynamically populated from IndexedDB) -->
+    <datalist id="customerNameDatalist"></datalist>
+
+    <!-- Main Content Area: Smart Note Grid -->
+    <main class="main-viewport">
+
+      <!-- Date-Based Archiving Navigation Bar -->
+      <section class="date-archive-section">
+        <div class="date-archive-header">
+          <div class="active-date-info">
+            <span class="active-date-badge" id="activeDateBadge">
+              <i data-lucide="calendar-days"></i>
+              <span id="activeDateLabel">บิลวันนี้ (Today)</span>
+            </span>
+            <span class="date-count-tag" id="activeDateCountTag">0 บิล</span>
+          </div>
+
+          <div class="date-archive-controls">
+            <!-- Button to open/close past date accordion drawer -->
+            <button id="btnToggleArchive" class="btn-archive-toggle" title="เปิด/ปิดคลังประวัติบิลย้อนหลัง">
+              <i data-lucide="archive"></i>
+              <span>คลังประวัติย้อนหลัง (<span id="archiveDateCount">0</span> วัน)</span>
+              <i data-lucide="chevron-down" id="archiveChevronIcon"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Date Blocks Quick Selector (Horizontal Scroll) -->
+        <div class="date-blocks-container" id="dateBlocksContainer">
+          <div class="date-blocks-scroll" id="dateBlocksScroll">
+            <!-- Dynamic Date Blocks injected via app.js -->
+          </div>
+        </div>
+
+        <!-- Collapsible History Archive Accordion / Drawer -->
+        <div id="historyArchiveDrawer" class="history-archive-drawer" style="display: none;">
+          <div class="archive-drawer-header">
+            <h4><i data-lucide="history"></i> คลังประวัติบิลแยกตามวัน (Daily Archive Blocks)</h4>
+            <span class="archive-hint">คลิกเลือกวันที่ต้องการเพื่อเปิดดูบิลย้อนหลัง บิลเก่าจะไม่ปะปนกับบิลวันนี้</span>
+          </div>
+          <div class="archive-cards-grid" id="archiveCardsGrid">
+            <!-- Dynamic Daily Archive Cards injected here -->
+          </div>
+        </div>
+      </section>
+
+      <div class="notes-grid-header">
+        <div class="section-title-wrap">
+          <h2 class="section-title" id="gridDisplayTitle">บิลร้านค้าประจำวัน</h2>
+          <span class="section-hint" id="gridDisplayHint">แสดงเฉพาะบิลของวันนี้ บิลของวันก่อนหน้าจะถูกเก็บเข้าคลังประวัติอัตโนมัติ</span>
+        </div>
+        <div class="view-controls">
+          <button id="btnSortNotes" class="btn-sort" title="สลับการเรียงลำดับเวลา">
+            <i data-lucide="arrow-up-down"></i> ล่าสุดก่อน
+          </button>
+          <button id="btnClearAllNotes" class="btn-sort btn-clear-all" title="ลบบิลทั้งหมดออกจากเครื่อง">
+            <i data-lucide="trash-2"></i> ล้างบิลทั้งหมด
+          </button>
+        </div>
+      </div>
+
+      <!-- Container where Smart Notes cards are rendered -->
+      <div id="notesContainer" class="notes-grid">
+        <!-- Dynamic Cards Injected Here via app.js -->
+      </div>
+
+      <!-- Empty State -->
+      <div id="emptyState" class="empty-state-view" style="display: none;">
+        <div class="empty-icon-wrap">
+          <i data-lucide="clipboard-list" class="empty-icon"></i>
+        </div>
+        <h3>ไม่พบบันทึกบิล</h3>
+        <p>ยังไม่มีรายการบิลในเงื่อนไขนี้ คุณสามารถกด "สร้างบิลใหม่" หรือ "สแกน AI" ได้ทันที</p>
+        <button id="btnEmptyCreate" class="btn btn-primary">
+          <i data-lucide="plus"></i> สร้างบิลแรกตอนนี้
+        </button>
+      </div>
+    </main>
+
+    <!-- ==================== CAMERA & AI OCR SCANNER MODAL ==================== -->
+    <div id="cameraModal" class="modal-overlay" aria-hidden="true">
+      <div class="modal-card modal-lg">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <div class="modal-icon-badge camera-badge">
+              <i data-lucide="scan-line"></i>
+            </div>
+            <div>
+              <h3 class="modal-title">AI Camera Scanner (Google Vision Mock)</h3>
+              <p class="modal-desc">สแกนสินค้าหรือใบเสร็จอัตโนมัติเพื่อสร้างหรือเพิ่มลงในบิล</p>
+            </div>
+          </div>
+          <button class="modal-close-btn" data-close="cameraModal">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <div class="scanner-viewport-wrapper">
+            <div class="video-container" id="videoContainer">
+              <!-- Live Video Stream element -->
+              <video id="webcamVideo" autoplay playsinline muted></video>
+              <canvas id="captureCanvas" style="display: none;"></canvas>
+
+              <!-- Viewfinder Overlay & Laser Effect -->
+              <div class="scanner-overlay">
+                <div class="laser-scanner"></div>
+                <div class="corner-bracket top-left"></div>
+                <div class="corner-bracket top-right"></div>
+                <div class="corner-bracket bottom-left"></div>
+                <div class="corner-bracket bottom-right"></div>
+                <div class="scanner-status" id="scanStatusBadge">
+                  <span class="status-dot"></span> พร้อมสแกนวัตถุ / สินค้า
+                </div>
+              </div>
+
+              <!-- Fallback Simulated View if camera is blocked/absent -->
+              <div id="simulatedCameraView" class="simulated-camera-view" style="display: none;">
+                <div class="shelf-scene">
+                  <div class="shelf-item-mock item-1">
+                    <i data-lucide="coffee"></i>
+                    <span>กาแฟโบราณเย็น</span>
+                  </div>
+                  <div class="shelf-item-mock item-2">
+                    <i data-lucide="cup-soda"></i>
+                    <span>ชานมไข่มุกไต้หวัน</span>
+                  </div>
+                  <div class="shelf-item-mock item-3">
+                    <i data-lucide="utensils"></i>
+                    <span>ข้าวกะเพราหมูกรอบ</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Target Note Selection -->
+            <div class="scanner-options-panel">
+              <div class="form-group">
+                <label for="ocrTargetSelect">นำรายการที่สแกนใส่ใน:</label>
+                <select id="ocrTargetSelect" class="form-select">
+                  <option value="new">+ สร้างสมาร์ทโน้ตบิลใหม่ (New Note)</option>
+                  <!-- Populated dynamically with open notes -->
+                </select>
+              </div>
+
+              <div class="form-group" id="ocrCustomerNameGroup">
+                <label for="ocrCustomerNameInput">ชื่อลูกค้า (กรณีสร้างบิลใหม่):</label>
+                <input type="text" id="ocrCustomerNameInput" list="customerNameDatalist" class="form-input" placeholder="เช่น ลูกค้าโต๊ะ 3, พี่บอล, คุณวิชัย">
+              </div>
+
+              <!-- Detected OCR Results Preview -->
+              <div class="ocr-preview-box">
+                <div class="ocr-preview-header">
+                  <span><i data-lucide="sparkles"></i> รายการที่ AI ตรวจพบ (Detected Items):</span>
+                  <span id="ocrConfidenceBadge" class="confidence-badge">พร้อมวิเคราะห์</span>
+                </div>
+                <div id="ocrDetectedList" class="ocr-detected-items">
+                  <p class="empty-hint">กดปุ่ม "ถ่ายภาพและวิเคราะห์ AI" ด้านล่างเพื่อเริ่มการสแกน</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button id="btnSwitchCameraMode" class="btn btn-secondary">
+            <i data-lucide="refresh-cw"></i> สลับโหมดจำลอง/กล้องจริง
+          </button>
+          <button id="btnTriggerOCR" class="btn btn-gradient-camera">
+            <i data-lucide="sparkles"></i> ถ่ายภาพและวิเคราะห์ AI (OCR)
+          </button>
+          <button id="btnApplyOCR" class="btn btn-success" disabled>
+            <i data-lucide="check"></i> บันทึกลงบิล Smart Note
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hidden Template for PDF Printing (offscreen container) -->
+    <div id="pdfExportContainer" class="pdf-export-wrapper" style="display: none;"></div>
+
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="toast-container"></div>
+  </div>
+
+  <!-- 1. Product Catalog Configuration (Edit products here) -->
+  <script src="products.js"></script>
+  <!-- 2. Main Application Script (IndexedDB, Snapshot Logic, UI) -->
+  <script src="app.js"></script>
+</body>
+</html>
