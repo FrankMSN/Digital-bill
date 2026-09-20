@@ -3331,13 +3331,536 @@ html, body {
   text-align: left;
 }
 
-/* Responsive adjustment for bill type modal */
-@media (max-width: 600px) {
-  .bill-type-cards-grid {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
+/* ==========================================================================
+   STREAMLINED 1-STEP CAMERA & SMART CLASSIFIER STYLES
+   ========================================================================== */
+.camera-streamlined-modal {
+  max-width: 460px;
+  width: 100%;
+  border-radius: 24px;
+  overflow: hidden;
 }
+
+.camera-modal-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Viewfinder */
+.camera-viewfinder-box {
+  position: relative;
+  width: 100%;
+  height: 270px;
+  background: #090d16;
+  border-radius: 20px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.7);
+  border: 1.5px solid #334155;
+}
+
+#webcamVideo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.image-preview-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #090d16;
+}
+
+.image-preview-container img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* Viewfinder guides */
+.viewfinder-guides {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.center-aim-reticle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 70px;
+  height: 70px;
+  transform: translate(-50%, -50%);
+  border: 1px dashed rgba(255, 255, 255, 0.4);
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+.center-aim-reticle::before,
+.center-aim-reticle::after {
+  content: '';
+  position: absolute;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.center-aim-reticle::before {
+  top: 50%;
+  left: -8px;
+  right: -8px;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+.center-aim-reticle::after {
+  left: 50%;
+  top: -8px;
+  bottom: -8px;
+  width: 1px;
+  transform: translateX(-50%);
+}
+
+.viewfinder-status-tag {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  color: #f8fafc;
+  padding: 5px 14px;
+  border-radius: 9999px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  z-index: 10;
+}
+
+/* Scanning Overlay with Laser */
+.laser-scanner-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(5px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.laser-beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #38bdf8, #818cf8, #ec4899, transparent);
+  box-shadow: 0 0 14px 3px rgba(56, 189, 248, 0.85);
+  animation: laserSweep 1.8s ease-in-out infinite alternate;
+}
+
+@keyframes laserSweep {
+  0% { top: 8%; opacity: 0.3; }
+  50% { opacity: 1; }
+  100% { top: 92%; opacity: 0.3; }
+}
+
+.laser-msg-card {
+  background: rgba(30, 41, 59, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 16px 20px;
+  border-radius: 18px;
+  text-align: center;
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+  max-width: 85%;
+}
+
+.laser-msg-card i {
+  width: 28px;
+  height: 28px;
+  color: #38bdf8;
+}
+
+.laser-msg-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.laser-msg-sub {
+  font-size: 0.75rem;
+  color: #cbd5e1;
+}
+
+/* Shutter Controls Bar */
+.camera-shutter-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 0 4px;
+}
+
+.camera-shutter-btn {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 3.5px solid #4f46e5;
+  background: #ffffff;
+  padding: 4px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px -4px rgba(79, 70, 229, 0.45);
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.camera-shutter-btn:hover {
+  transform: scale(1.06);
+  box-shadow: 0 12px 28px -4px rgba(79, 70, 229, 0.6);
+}
+
+.camera-shutter-btn:active {
+  transform: scale(0.92);
+}
+
+.shutter-circle {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #8b5cf6 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+}
+
+.shutter-circle i {
+  width: 26px;
+  height: 26px;
+}
+
+.shutter-prompt {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin-top: 10px;
+  letter-spacing: -0.01em;
+}
+
+.shutter-secondary-actions {
+  margin-top: 12px;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.btn-gallery-picker {
+  background: #f8fafc;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 9999px;
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 8px 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-gallery-picker:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+  border-color: #94a3b8;
+}
+
+.btn-gallery-picker i {
+  width: 15px;
+  height: 15px;
+  color: #4f46e5;
+}
+
+/* Result View */
+.camera-result-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: fadeInResult 0.3s ease-out;
+}
+
+@keyframes fadeInResult {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Classification Badges */
+.result-classification-pill {
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 0.88rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  line-height: 1.35;
+}
+
+.result-classification-pill i {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.result-classification-pill.badge-retail {
+  background: #e0e7ff;
+  border: 1.5px solid #c7d2fe;
+  color: #3730a3;
+}
+
+.result-classification-pill.badge-retail strong {
+  color: #1e1b4b;
+}
+
+.result-classification-pill.badge-restaurant {
+  background: #ffedd5;
+  border: 1.5px solid #fed7aa;
+  color: #9a3412;
+}
+
+.result-classification-pill.badge-restaurant strong {
+  color: #7c2d12;
+}
+
+/* Result Item Card */
+.scanner-result-card {
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 18px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
+}
+
+.result-thumb-wrapper {
+  position: relative;
+  width: 74px;
+  height: 74px;
+  min-width: 74px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1.5px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.result-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.result-mini-tag {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-align: center;
+  padding: 2px 0;
+  color: #ffffff;
+}
+
+.result-mini-tag.tag-retail { background: #4f46e5; }
+.result-mini-tag.tag-restaurant { background: #ea580c; }
+
+.result-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+}
+
+.result-item-title {
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0;
+  line-height: 1.25;
+}
+
+.result-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.result-item-price {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #4f46e5;
+}
+
+.result-acc-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #059669;
+  background: #dcfce7;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.result-acc-badge i {
+  width: 11px;
+  height: 11px;
+}
+
+.result-qty-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.qty-label {
+  font-size: 0.8rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.result-qty-stepper {
+  display: inline-flex;
+  align-items: center;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.res-qty-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+
+.res-qty-btn:active {
+  background: #e2e8f0;
+}
+
+.res-qty-num {
+  width: 28px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 0.88rem;
+  color: #0f172a;
+}
+
+/* Destination Note Box */
+.result-destination-box {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.result-destination-box .form-group {
+  margin-bottom: 0;
+}
+
+.result-destination-box label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.result-destination-box label i {
+  width: 14px;
+  height: 14px;
+  color: #4f46e5;
+}
+
+/* Actions Stack */
+.result-actions-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.btn-apply-result {
+  width: 100%;
+  padding: 13px 18px;
+  font-size: 1rem;
+  font-weight: 800;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 8px 20px -4px rgba(16, 185, 129, 0.4);
+}
+
+.btn-apply-result i {
+  width: 20px;
+  height: 20px;
+}
+
+.btn-retake {
+  width: 100%;
+  padding: 10px 16px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn-retake i {
+  width: 16px;
+  height: 16px;
+}
+
 
 
 

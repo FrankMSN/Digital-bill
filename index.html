@@ -17,6 +17,9 @@
   <!-- html2pdf.js for exporting client-side note cards directly to PDF -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
+  <!-- Tesseract.js for Client-Side AI OCR & Text Recognition -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
   <!-- PWA & Mobile Meta Tags -->
   <meta name="theme-color" content="#4f46e5">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -247,15 +250,15 @@
 
     <!-- ==================== CAMERA & AI OCR SCANNER MODAL ==================== -->
     <div id="cameraModal" class="modal-overlay" aria-hidden="true" style="display: none;">
-      <div class="modal-card modal-lg">
+      <div class="modal-card camera-streamlined-modal">
         <div class="modal-header">
           <div class="modal-title-group">
             <div class="modal-icon-badge camera-badge">
               <i data-lucide="scan-line"></i>
             </div>
             <div>
-              <h3 class="modal-title">AI Camera Scanner & Catalog Matcher</h3>
-              <p class="modal-desc">สแกนสินค้าและเทียบข้อมูลกับของในร้าน (รูปอ้างอิงจากเน็ต • ตัดรายการไม่ตรงออก)</p>
+              <h3 class="modal-title">AI Camera & Smart Classifier</h3>
+              <p class="modal-desc">กดถ่ายภาพหรือเลือกรูป • ระบบคำนวณแยกแยะ (สินค้า vs อาหาร) ให้อัตโนมัติ</p>
             </div>
           </div>
           <button class="modal-close-btn" data-close="cameraModal">
@@ -263,131 +266,129 @@
           </button>
         </div>
 
-        <div class="modal-body">
-          <!-- 1. Camera Permission Pre-Prompt View (Shown before camera starts) -->
-          <div id="cameraPermissionCard" class="camera-permission-box">
-            <div class="perm-icon-wrapper">
-              <i data-lucide="camera" class="perm-icon"></i>
-              <span class="perm-pulse"></span>
-            </div>
-            <h4>ขออนุญาตเข้าถึงกล้องถ่ายภาพ</h4>
-            <p>ระบบ Smart POS ต้องการขออนุญาตเปิดกล้องเพื่อใช้สแกนสินค้าและแท็กสินค้าในร้านอัตโนมัติ</p>
-            
-            <div class="perm-actions">
-              <button id="btnGrantCamera" class="btn btn-primary btn-perm-grant">
-                <i data-lucide="video"></i>
-                <span>อนุญาตเปิดกล้อง</span>
-              </button>
-              <button id="btnUploadImageTrigger" class="btn btn-secondary">
-                <i data-lucide="upload"></i>
-                <span>อัปโหลดรูปภาพ</span>
-              </button>
-              <button id="btnUseSimulatedView" class="btn btn-secondary">
-                <i data-lucide="layers"></i>
-                <span>ใช้ภาพจำลองสินค้า</span>
-              </button>
-            </div>
-            <input type="file" id="cameraFileInput" accept="image/*" style="display: none;">
-          </div>
-
-          <!-- 2. Camera Denied Alert (Shown if permission denied) -->
-          <div id="cameraDeniedAlert" class="camera-denied-alert" style="display: none;">
-            <i data-lucide="alert-circle"></i>
-            <div class="denied-text">
-              <strong>ไม่ได้รับอนุญาตให้ใช้กล้อง</strong>
-              <span>กรุณาเปิดสิทธิ์กล้องในเบราว์เซอร์ หรือใช้วิธีอัปโหลดภาพแทนได้ทันที</span>
-            </div>
-            <button id="btnRetryPermission" class="btn btn-sm btn-secondary">ลองอีกครั้ง</button>
-          </div>
-
-          <!-- 3. Active Scanner Viewport & OCR Result Layout -->
-          <div class="scanner-viewport-wrapper" id="scannerMainViewport" style="display: none;">
-            <div class="video-container" id="videoContainer">
-              <!-- Live Video Stream element -->
+        <div class="modal-body camera-modal-body">
+          <!-- VIEW 1: LIVE CAPTURE & VIEWFINDER VIEW -->
+          <div id="cameraCaptureView" class="camera-capture-view">
+            <div class="camera-viewfinder-box" id="cameraViewfinderBox">
+              <!-- Live Video Stream -->
               <video id="webcamVideo" autoplay playsinline muted></video>
+              <!-- Uploaded Image Preview Container -->
+              <div id="imagePreviewContainer" class="image-preview-container" style="display: none;"></div>
+              <!-- Hidden Capture Canvas -->
               <canvas id="captureCanvas" style="display: none;"></canvas>
 
-              <!-- Viewfinder Overlay & Laser Effect -->
-              <div class="scanner-overlay">
-                <div class="laser-scanner"></div>
+              <!-- Viewfinder Frame & Aiming Guides -->
+              <div class="viewfinder-guides">
                 <div class="corner-bracket top-left"></div>
                 <div class="corner-bracket top-right"></div>
                 <div class="corner-bracket bottom-left"></div>
                 <div class="corner-bracket bottom-right"></div>
-                <div class="scanner-status" id="scanStatusBadge">
-                  <span class="status-dot"></span> สแกนสินค้าในร้าน
-                </div>
+                <div class="center-aim-reticle"></div>
               </div>
 
-              <!-- Fallback Simulated View if camera is blocked/absent -->
-              <div id="simulatedCameraView" class="simulated-camera-view" style="display: none;">
-                <div class="shelf-scene">
-                  <div class="shelf-item-mock item-1">
-                    <i data-lucide="coffee"></i>
-                    <span>กาแฟโบราณเย็น</span>
-                  </div>
-                  <div class="shelf-item-mock item-2">
-                    <i data-lucide="cup-soda"></i>
-                    <span>ชานมไข่มุกไต้หวัน</span>
-                  </div>
-                  <div class="shelf-item-mock item-3">
-                    <i data-lucide="utensils"></i>
-                    <span>ข้าวกะเพราหมูกรอบ</span>
-                  </div>
+              <!-- Status Tag -->
+              <div class="viewfinder-status-tag" id="scanStatusBadge">
+                <span class="status-dot"></span> เล็งกล้องไปที่สินค้าหรืออาหาร
+              </div>
+
+              <!-- AI Scanning Laser Overlay (shown while processing) -->
+              <div id="scannerLaserOverlay" class="laser-scanner-overlay" style="display: none;">
+                <div class="laser-beam"></div>
+                <div class="laser-msg-card">
+                  <i data-lucide="sparkles" class="spin"></i>
+                  <div class="laser-msg-title">กำลังวิเคราะห์ภาพ...</div>
+                  <div class="laser-msg-sub">ระบบกำลังคำนวณแยกแยะ สินค้า vs อาหาร</div>
                 </div>
               </div>
             </div>
 
-            <!-- Target Note & Detected Products Panel -->
-            <div class="scanner-options-panel">
-              <div class="form-group">
-                <label for="ocrTargetSelect">นำรายการที่สแกนใส่ใน:</label>
-                <select id="ocrTargetSelect" class="form-select">
-                  <option value="new_retail">+ สร้างบิลร้านค้าใหม่ (จาก Data สินค้า)</option>
-                  <option value="new_restaurant">+ สร้างบิลร้านอาหารใหม่ (พิมพ์อิสระ)</option>
-                  <!-- Populated dynamically with open notes -->
-                </select>
+            <!-- Camera Denied Alert (Fallback) -->
+            <div id="cameraDeniedAlert" class="camera-denied-alert" style="display: none;">
+              <i data-lucide="alert-circle"></i>
+              <div class="denied-text">
+                <strong>ยังไม่สามารถเข้าถึงกล้องได้</strong>
+                <span>แตะเลือกรูปภาพจากเครื่อง หรือกดลองเปิดกล้องอีกครั้ง</span>
               </div>
+              <button id="btnRetryPermission" class="btn btn-sm btn-secondary" type="button">ลองเปิดกล้อง</button>
+            </div>
 
-              <div class="form-group" id="ocrCustomerNameGroup">
-                <label for="ocrCustomerNameInput">ชื่อลูกค้า / โต๊ะ (กรณีสร้างบิลใหม่):</label>
-                <input type="text" id="ocrCustomerNameInput" list="customerNameDatalist" class="form-input" placeholder="เช่น ลูกค้าโต๊ะ 3, พี่บอล, คุณวิชัย">
-              </div>
-
-              <!-- Detected OCR Results Preview -->
-              <div class="ocr-preview-box">
-                <div class="ocr-preview-header">
-                  <span><i data-lucide="sparkles"></i> สินค้าที่ AI แท็กได้ (ตรงกับของในร้าน):</span>
-                  <span id="ocrConfidenceBadge" class="confidence-badge">พร้อมวิเคราะห์</span>
+            <!-- Shutter Controls Bar -->
+            <div class="camera-shutter-bar">
+              <button id="btnCaptureShutter" class="camera-shutter-btn" type="button" title="กดถ่ายภาพ">
+                <div class="shutter-circle">
+                  <i data-lucide="camera"></i>
                 </div>
+              </button>
+              <div class="shutter-prompt">แตะปุ่มเพื่อถ่ายภาพ</div>
 
-                <!-- Match / Discard Filter Summary Banner -->
-                <div id="ocrFilterSummaryBanner" class="ocr-filter-summary" style="display: none;">
-                  <span class="match-badge" id="ocrMatchCountBadge"><i data-lucide="check-circle-2"></i> ตรงกับในร้าน 0 รายการ</span>
-                  <span class="discard-badge" id="ocrDiscardCountBadge"><i data-lucide="filter-x"></i> ตัดออก 0 รายการ (ไม่มีในร้าน)</span>
-                </div>
-
-                <div id="ocrDetectedList" class="ocr-detected-items">
-                  <p class="empty-hint">กดปุ่ม "ถ่ายภาพและวิเคราะห์ AI" ด้านล่างเพื่อเริ่มการสแกน</p>
-                </div>
+              <div class="shutter-secondary-actions">
+                <button id="btnUploadImageTrigger" class="btn-gallery-picker" type="button">
+                  <i data-lucide="image"></i>
+                  <span>เลือกรูปจากมือถือ / คลังภาพ</span>
+                </button>
+                <input type="file" id="cameraFileInput" accept="image/*" style="display: none;">
               </div>
             </div>
           </div>
-        </div>
 
-        <div class="modal-footer">
-          <button id="btnSwitchCameraMode" class="btn btn-secondary">
-            <i data-lucide="refresh-cw"></i> สลับโหมดจำลอง/กล้องจริง
-          </button>
-          <button id="btnUploadInFooter" class="btn btn-secondary">
-            <i data-lucide="upload"></i> เลือกรูป
-          </button>
-          <button id="btnTriggerOCR" class="btn btn-gradient-camera" disabled>
-            <i data-lucide="sparkles"></i> ถ่ายภาพและวิเคราะห์ AI
-          </button>
-          <button id="btnApplyOCR" class="btn btn-success" disabled>
-            <i data-lucide="check"></i> บันทึกลงบิล Smart Note
-          </button>
+          <!-- VIEW 2: SMART DETECTION & CLASSIFICATION RESULT (Shown after capture) -->
+          <div id="cameraResultView" class="camera-result-view" style="display: none;">
+            <!-- Category Classification Badge (Retail Product vs Food Menu) -->
+            <div id="resultClassificationBadge" class="result-classification-pill badge-retail">
+              <i data-lucide="package"></i>
+              <span class="badge-text">ระบบคำนวณ: <strong>สินค้าในร้าน (Retail Product)</strong></span>
+            </div>
+
+            <!-- Result Item Card -->
+            <div class="scanner-result-card">
+              <div class="result-thumb-wrapper">
+                <img id="resultThumbImg" class="result-thumb-img" src="" alt="Thumbnail" onerror="this.src='icon.svg'">
+                <span id="resultTypeMiniTag" class="result-mini-tag tag-retail">สินค้า</span>
+              </div>
+              <div class="result-details">
+                <h4 id="resultItemTitle" class="result-item-title">น้ำอัดลมเป๊ปซี่ (กระป๋อง)</h4>
+                <div class="result-meta-row">
+                  <span id="resultItemPrice" class="result-item-price">฿20.00</span>
+                  <span id="resultAccuracyBadge" class="result-acc-badge">
+                    <i data-lucide="sparkles"></i> แม่นยำ 98%
+                  </span>
+                </div>
+                <!-- Quantity Stepper -->
+                <div class="result-qty-row">
+                  <span class="qty-label">จำนวน:</span>
+                  <div class="result-qty-stepper">
+                    <button id="btnResQtyMinus" type="button" class="res-qty-btn">-</button>
+                    <span id="resultQtyDisplay" class="res-qty-num">1</span>
+                    <button id="btnResQtyPlus" type="button" class="res-qty-btn">+</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Target Destination Select -->
+            <div class="result-destination-box">
+              <div class="form-group">
+                <label for="ocrTargetSelect"><i data-lucide="arrow-down-right"></i> บันทึกลงในบิล:</label>
+                <select id="ocrTargetSelect" class="form-select"></select>
+              </div>
+              <div class="form-group" id="ocrCustomerNameGroup">
+                <label for="ocrCustomerNameInput">ชื่อลูกค้า / โต๊ะ (กรณีสร้างบิลใหม่):</label>
+                <input type="text" id="ocrCustomerNameInput" list="customerNameDatalist" class="form-input" placeholder="เช่น ลูกค้าโต๊ะ 3, ลูกค้าหน้าร้าน">
+              </div>
+            </div>
+
+            <!-- Action Buttons: 1-Tap Save & Retake -->
+            <div class="result-actions-stack">
+              <button id="btnApplyOCR" class="btn btn-success btn-lg btn-block btn-apply-result" type="button">
+                <i data-lucide="plus-circle"></i>
+                <span id="btnApplyOCRText">บันทึกลงบิล (฿20.00)</span>
+              </button>
+              <button id="btnRetakeCapture" class="btn btn-secondary btn-block btn-retake" type="button">
+                <i data-lucide="camera"></i>
+                <span>ถ่ายภาพใหม่ / สแกนอีกครั้ง</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
