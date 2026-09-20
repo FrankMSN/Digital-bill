@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="description" content="Smart POS & Smart Note Web Application - ระบบจัดการบิลหน้าร้านและบันทึกเซ็นเชื่อ (IOU) แบบ Offline-First 100% สำหรับ Netlify">
   <title>Smart POS & Smart Note | ระบบจัดการบิลและเซ็นเชื่อ</title>
 
@@ -16,6 +16,15 @@
 
   <!-- html2pdf.js for exporting client-side note cards directly to PDF -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+  <!-- PWA & Mobile Meta Tags -->
+  <meta name="theme-color" content="#4f46e5">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Smart POS">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="apple-touch-icon" href="icon.svg">
 
   <link rel="stylesheet" href="style.css">
 </head>
@@ -58,6 +67,13 @@
             <button class="chip active" data-filter="all">ทั้งหมด (<span id="countAll">0</span>)</button>
             <button class="chip chip-iou" data-filter="IOU">เซ็นเชื่อ (<span id="countIOU">0</span>)</button>
             <button class="chip chip-paid" data-filter="Paid">จ่ายแล้ว (<span id="countPaid">0</span>)</button>
+          </div>
+
+          <!-- Bill Type Filter Tabs -->
+          <div class="bill-type-filter-chips">
+            <button class="type-chip active" data-bill-type="all">ทุกบิล (<span id="countTypeAll">0</span>)</button>
+            <button class="type-chip chip-retail" data-bill-type="retail"><i data-lucide="store"></i> ร้านค้า (<span id="countRetail">0</span>)</button>
+            <button class="type-chip chip-restaurant" data-bill-type="restaurant"><i data-lucide="utensils"></i> ร้านอาหาร (<span id="countRestaurant">0</span>)</button>
           </div>
         </div>
 
@@ -173,8 +189,64 @@
       </div>
     </main>
 
+    <!-- ==================== BILL TYPE SELECTION MODAL ==================== -->
+    <div id="billTypeModal" class="modal-overlay" aria-hidden="true" style="display: none;">
+      <div class="modal-card bill-type-modal-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <div class="modal-icon-badge" style="background: #e0e7ff; color: #4f46e5;">
+              <i data-lucide="receipt"></i>
+            </div>
+            <div>
+              <h3 class="modal-title">เลือกประเภทบิลใหม่</h3>
+              <p class="modal-desc">เลือกลักษณะการบันทึกรายการสำหรับบิลนี้</p>
+            </div>
+          </div>
+          <button class="modal-close-btn" data-close="billTypeModal">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <div class="bill-type-cards-grid">
+            <!-- Option 1: บิลร้านค้า -->
+            <div class="bill-type-card" id="btnChooseRetailBill">
+              <div class="type-card-badge-pill retail-pill"><i data-lucide="database"></i> ใช้ Data สินค้า</div>
+              <div class="type-card-icon-wrap retail-wrap">
+                <i data-lucide="store"></i>
+              </div>
+              <h4 class="type-card-title">บิลร้านค้า (Retail)</h4>
+              <p class="type-card-desc">เพิ่มสินค้าโดยดึงข้อมูลจากระบบ (Data) ราคาและชื่อล็อกตามแคตตาล็อกสินค้า</p>
+              <ul class="type-feature-list">
+                <li><i data-lucide="check"></i> เลือกสินค้าจากแคตตาล็อกร้าน</li>
+                <li><i data-lucide="check"></i> ดึงราคามาตรฐานอัตโนมัติ</li>
+                <li><i data-lucide="check"></i> สแกน AI OCR ตรงกับสินค้าในร้าน</li>
+              </ul>
+              <button class="btn btn-primary btn-type-select">สร้างบิลร้านค้า</button>
+            </div>
+
+            <!-- Option 2: บิลร้านอาหาร -->
+            <div class="bill-type-card" id="btnChooseRestaurantBill">
+              <div class="type-card-badge-pill restaurant-pill"><i data-lucide="edit-3"></i> พิมพ์มืออิสระ</div>
+              <div class="type-card-icon-wrap restaurant-wrap">
+                <i data-lucide="utensils"></i>
+              </div>
+              <h4 class="type-card-title">บิลร้านอาหาร (Restaurant)</h4>
+              <p class="type-card-desc">เพิ่มรายการอาหารโดยใช้มือพิมพ์คีย์ชื่อเมนูและกำหนดราคาเองได้อย่างอิสระ</p>
+              <ul class="type-feature-list">
+                <li><i data-lucide="check"></i> พิมพ์ชื่อเมนูอาหารตามสั่งเอง</li>
+                <li><i data-lucide="check"></i> กำหนดราคาเองตามต้องการ</li>
+                <li><i data-lucide="check"></i> ระบุหมายเหตุ / เบอร์โต๊ะได้</li>
+              </ul>
+              <button class="btn btn-restaurant btn-type-select">สร้างบิลร้านอาหาร</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ==================== CAMERA & AI OCR SCANNER MODAL ==================== -->
-    <div id="cameraModal" class="modal-overlay" aria-hidden="true">
+    <div id="cameraModal" class="modal-overlay" aria-hidden="true" style="display: none;">
       <div class="modal-card modal-lg">
         <div class="modal-header">
           <div class="modal-title-group">
@@ -182,8 +254,8 @@
               <i data-lucide="scan-line"></i>
             </div>
             <div>
-              <h3 class="modal-title">AI Camera Scanner (Google Vision Mock)</h3>
-              <p class="modal-desc">สแกนสินค้าหรือใบเสร็จอัตโนมัติเพื่อสร้างหรือเพิ่มลงในบิล</p>
+              <h3 class="modal-title">AI Camera Scanner & Catalog Matcher</h3>
+              <p class="modal-desc">สแกนสินค้าและเทียบข้อมูลกับของในร้าน (รูปอ้างอิงจากเน็ต • ตัดรายการไม่ตรงออก)</p>
             </div>
           </div>
           <button class="modal-close-btn" data-close="cameraModal">
@@ -192,7 +264,44 @@
         </div>
 
         <div class="modal-body">
-          <div class="scanner-viewport-wrapper">
+          <!-- 1. Camera Permission Pre-Prompt View (Shown before camera starts) -->
+          <div id="cameraPermissionCard" class="camera-permission-box">
+            <div class="perm-icon-wrapper">
+              <i data-lucide="camera" class="perm-icon"></i>
+              <span class="perm-pulse"></span>
+            </div>
+            <h4>ขออนุญาตเข้าถึงกล้องถ่ายภาพ</h4>
+            <p>ระบบ Smart POS ต้องการขออนุญาตเปิดกล้องเพื่อใช้สแกนสินค้าและแท็กสินค้าในร้านอัตโนมัติ</p>
+            
+            <div class="perm-actions">
+              <button id="btnGrantCamera" class="btn btn-primary btn-perm-grant">
+                <i data-lucide="video"></i>
+                <span>อนุญาตเปิดกล้อง</span>
+              </button>
+              <button id="btnUploadImageTrigger" class="btn btn-secondary">
+                <i data-lucide="upload"></i>
+                <span>อัปโหลดรูปภาพ</span>
+              </button>
+              <button id="btnUseSimulatedView" class="btn btn-secondary">
+                <i data-lucide="layers"></i>
+                <span>ใช้ภาพจำลองสินค้า</span>
+              </button>
+            </div>
+            <input type="file" id="cameraFileInput" accept="image/*" style="display: none;">
+          </div>
+
+          <!-- 2. Camera Denied Alert (Shown if permission denied) -->
+          <div id="cameraDeniedAlert" class="camera-denied-alert" style="display: none;">
+            <i data-lucide="alert-circle"></i>
+            <div class="denied-text">
+              <strong>ไม่ได้รับอนุญาตให้ใช้กล้อง</strong>
+              <span>กรุณาเปิดสิทธิ์กล้องในเบราว์เซอร์ หรือใช้วิธีอัปโหลดภาพแทนได้ทันที</span>
+            </div>
+            <button id="btnRetryPermission" class="btn btn-sm btn-secondary">ลองอีกครั้ง</button>
+          </div>
+
+          <!-- 3. Active Scanner Viewport & OCR Result Layout -->
+          <div class="scanner-viewport-wrapper" id="scannerMainViewport" style="display: none;">
             <div class="video-container" id="videoContainer">
               <!-- Live Video Stream element -->
               <video id="webcamVideo" autoplay playsinline muted></video>
@@ -206,7 +315,7 @@
                 <div class="corner-bracket bottom-left"></div>
                 <div class="corner-bracket bottom-right"></div>
                 <div class="scanner-status" id="scanStatusBadge">
-                  <span class="status-dot"></span> พร้อมสแกนวัตถุ / สินค้า
+                  <span class="status-dot"></span> สแกนสินค้าในร้าน
                 </div>
               </div>
 
@@ -229,27 +338,35 @@
               </div>
             </div>
 
-            <!-- Target Note Selection -->
+            <!-- Target Note & Detected Products Panel -->
             <div class="scanner-options-panel">
               <div class="form-group">
                 <label for="ocrTargetSelect">นำรายการที่สแกนใส่ใน:</label>
                 <select id="ocrTargetSelect" class="form-select">
-                  <option value="new">+ สร้างสมาร์ทโน้ตบิลใหม่ (New Note)</option>
+                  <option value="new_retail">+ สร้างบิลร้านค้าใหม่ (จาก Data สินค้า)</option>
+                  <option value="new_restaurant">+ สร้างบิลร้านอาหารใหม่ (พิมพ์อิสระ)</option>
                   <!-- Populated dynamically with open notes -->
                 </select>
               </div>
 
               <div class="form-group" id="ocrCustomerNameGroup">
-                <label for="ocrCustomerNameInput">ชื่อลูกค้า (กรณีสร้างบิลใหม่):</label>
+                <label for="ocrCustomerNameInput">ชื่อลูกค้า / โต๊ะ (กรณีสร้างบิลใหม่):</label>
                 <input type="text" id="ocrCustomerNameInput" list="customerNameDatalist" class="form-input" placeholder="เช่น ลูกค้าโต๊ะ 3, พี่บอล, คุณวิชัย">
               </div>
 
               <!-- Detected OCR Results Preview -->
               <div class="ocr-preview-box">
                 <div class="ocr-preview-header">
-                  <span><i data-lucide="sparkles"></i> รายการที่ AI ตรวจพบ (Detected Items):</span>
+                  <span><i data-lucide="sparkles"></i> สินค้าที่ AI แท็กได้ (ตรงกับของในร้าน):</span>
                   <span id="ocrConfidenceBadge" class="confidence-badge">พร้อมวิเคราะห์</span>
                 </div>
+
+                <!-- Match / Discard Filter Summary Banner -->
+                <div id="ocrFilterSummaryBanner" class="ocr-filter-summary" style="display: none;">
+                  <span class="match-badge" id="ocrMatchCountBadge"><i data-lucide="check-circle-2"></i> ตรงกับในร้าน 0 รายการ</span>
+                  <span class="discard-badge" id="ocrDiscardCountBadge"><i data-lucide="filter-x"></i> ตัดออก 0 รายการ (ไม่มีในร้าน)</span>
+                </div>
+
                 <div id="ocrDetectedList" class="ocr-detected-items">
                   <p class="empty-hint">กดปุ่ม "ถ่ายภาพและวิเคราะห์ AI" ด้านล่างเพื่อเริ่มการสแกน</p>
                 </div>
@@ -262,13 +379,72 @@
           <button id="btnSwitchCameraMode" class="btn btn-secondary">
             <i data-lucide="refresh-cw"></i> สลับโหมดจำลอง/กล้องจริง
           </button>
-          <button id="btnTriggerOCR" class="btn btn-gradient-camera">
-            <i data-lucide="sparkles"></i> ถ่ายภาพและวิเคราะห์ AI (OCR)
+          <button id="btnUploadInFooter" class="btn btn-secondary">
+            <i data-lucide="upload"></i> เลือกรูป
+          </button>
+          <button id="btnTriggerOCR" class="btn btn-gradient-camera" disabled>
+            <i data-lucide="sparkles"></i> ถ่ายภาพและวิเคราะห์ AI
           </button>
           <button id="btnApplyOCR" class="btn btn-success" disabled>
             <i data-lucide="check"></i> บันทึกลงบิล Smart Note
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- ==================== MOBILE LOAD CONFIRMATION MODAL ==================== -->
+    <div id="mobileLoadModal" class="modal-overlay mobile-confirm-overlay" aria-hidden="true" style="display: none;">
+      <div class="mobile-confirm-sheet">
+        <div class="mobile-app-avatar-wrapper">
+          <div class="app-icon-ambient-glow"></div>
+          <img src="icon.svg" alt="Smart POS Logo" class="mobile-app-icon-img" width="76" height="76">
+          <span class="mobile-badge-pro"><i data-lucide="zap"></i> 100% Offline</span>
+        </div>
+
+        <div class="mobile-confirm-header">
+          <h3 class="mobile-confirm-title">ยืนยันการโหลดแอป</h3>
+          <p class="mobile-confirm-subtitle">ระบบจัดการบิลและเซ็นเชื่อ <strong>Smart POS & Smart Note</strong></p>
+        </div>
+
+        <div class="mobile-features-list">
+          <div class="feature-item">
+            <div class="feature-icon-badge"><i data-lucide="wifi-off"></i></div>
+            <div class="feature-text">
+              <strong>ทำงานออฟไลน์ 100%</strong>
+              <span>บันทึกข้อมูลปลอดภัยบนเครื่อง ไม่ต้องต่องเน็ต</span>
+            </div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon-badge"><i data-lucide="receipt"></i></div>
+            <div class="feature-text">
+              <strong>จัดการบิลและเซ็นเชื่อ (IOU)</strong>
+              <span>ล็อกราคาขายแม่นยำ พร้อมส่งออกใบเสร็จ PDF</span>
+            </div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon-badge"><i data-lucide="sparkles"></i></div>
+            <div class="feature-text">
+              <strong>สแกนสินค้าด้วย AI OCR</strong>
+              <span>เปิดกล้องมือถือสแกนสร้างบิลได้สะดวกรวดเร็ว</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="mobile-confirm-actions">
+          <button id="btnConfirmMobileLoad" class="btn btn-confirm-launch">
+            <i data-lucide="arrow-right-circle"></i>
+            <span>ยืนยันการโหลดแอป</span>
+          </button>
+          
+          <button id="btnInstallPwa" class="btn btn-install-pwa" style="display: none;">
+            <i data-lucide="download"></i>
+            <span>ติดตั้งแอปลงหน้าจอหลัก (PWA)</span>
+          </button>
+        </div>
+
+        <p class="mobile-confirm-footnote">
+          <i data-lucide="shield-check"></i> แสดงยืนยันเฉพาะครั้งแรก • บันทึกสถานะอัตโนมัติ
+        </p>
       </div>
     </div>
 
@@ -281,7 +457,9 @@
 
   <!-- 1. Product Catalog Configuration (Edit products here) -->
   <script src="products.js"></script>
-  <!-- 2. Main Application Script (IndexedDB, Snapshot Logic, UI) -->
+  <!-- 2. Restaurant Food Menu Configuration (Edit food menus here) -->
+  <script src="restaurant_menu.js"></script>
+  <!-- 3. Main Application Script (IndexedDB, Snapshot Logic, UI) -->
   <script src="app.js"></script>
 </body>
 </html>

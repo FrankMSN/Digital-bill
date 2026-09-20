@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="50%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="paperGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#f8fafc"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="16" stdDeviation="24" flood-color="#1e1b4b" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  
+  <!-- App Icon Background -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)"/>
+  
+  <!-- Inner Glow Ring -->
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="none" stroke="#ffffff" stroke-width="4" stroke-opacity="0.2"/>
+
+  <!-- Receipt Graphic Container -->
+  <g filter="url(#shadow)">
+    <path d="M140 100 
+             C140 88 150 80 162 80 
+             L350 80 
+             C362 80 372 88 372 100 
+             L372 400 
+             L344 384 L316 400 L288 384 L256 400 L224 384 L196 400 L168 384 L140 400 Z" 
+          fill="url(#paperGrad)"/>
+  </g>
+
+  <!-- Receipt Header Pill -->
+  <rect x="180" y="120" width="152" height="20" rx="10" fill="#4f46e5"/>
+
+  <!-- Receipt Lines (Simulated POS Data) -->
+  <rect x="176" y="170" width="100" height="14" rx="7" fill="#94a3b8"/>
+  <rect x="300" y="170" width="36" height="14" rx="7" fill="#64748b"/>
+
+  <rect x="176" y="206" width="84" height="14" rx="7" fill="#94a3b8"/>
+  <rect x="300" y="206" width="36" height="14" rx="7" fill="#64748b"/>
+
+  <rect x="176" y="242" width="112" height="14" rx="7" fill="#94a3b8"/>
+  <rect x="300" y="242" width="36" height="14" rx="7" fill="#64748b"/>
+
+  <!-- Divider Line -->
+  <line x1="176" y1="280" x2="336" y2="280" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="6,4"/>
+
+  <!-- Total Summary Row -->
+  <rect x="176" y="306" width="70" height="18" rx="6" fill="#0f172a"/>
+  <rect x="276" y="304" width="60" height="22" rx="6" fill="#10b981"/>
+
+  <!-- Sparkle Badge -->
+  <circle cx="366" cy="116" r="28" fill="#ec4899"/>
+  <path d="M366 100 L370 112 L382 116 L370 120 L366 132 L362 120 L350 116 L362 112 Z" fill="#ffffff"/>
+</svg>

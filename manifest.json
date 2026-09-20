@@ -1,0 +1,19 @@
+{
+  "name": "Smart POS & Smart Note | ระบบจัดการบิลและเซ็นเชื่อ",
+  "short_name": "Smart POS",
+  "description": "ระบบจัดการบิลหน้าร้านและบันทึกเซ็นเชื่อ (IOU) แบบ 100% Offline-First",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f172a",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "finance", "productivity"]
+}

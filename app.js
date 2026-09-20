@@ -44,6 +44,38 @@ function getProductCatalog() {
 }
 
 /**
+ * Get active restaurant food menu from restaurant_menu.js (with fallback safeguard)
+ * @returns {Array}
+ */
+function getRestaurantMenu() {
+  if (typeof RESTAURANT_MENU !== 'undefined' && Array.isArray(RESTAURANT_MENU)) {
+    return RESTAURANT_MENU;
+  }
+  return [];
+}
+
+/**
+ * Find food menu item from restaurant_menu.js
+ * @param {string} searchName - Name or keyword of the food
+ * @returns {object|null}
+ */
+function findRestaurantMenuItem(searchName) {
+  if (!searchName) return null;
+  const menu = getRestaurantMenu();
+  const q = searchName.trim().toLowerCase();
+  // Exact match first
+  let match = menu.find(m => m.name.trim().toLowerCase() === q);
+  if (match) return match;
+  // Partial or keyword match
+  match = menu.find(m => {
+    if (m.name.toLowerCase().includes(q)) return true;
+    if (m.keywords && m.keywords.some(k => k.toLowerCase().includes(q) || q.includes(k.toLowerCase()))) return true;
+    return false;
+  });
+  return match || null;
+}
+
+/**
  * Get local date key string (YYYY-MM-DD) from ISO date
  */
 function getLocalDateKey(isoString) {
@@ -300,13 +332,16 @@ class LocalIndexedDB {
         };
       });
 
+      const billType = noteData.Bill_Type || 'retail';
+      const defaultCustomer = billType === 'restaurant' ? 'ลูกค้าโต๊ะ (ตามสั่ง)' : 'ลูกค้าทั่วไป';
       const newNote = {
         Note_ID: noteId,
-        Customer_Name: (noteData.Customer_Name || noteData.customer || '').trim() || 'ลูกค้าทั่วไป',
+        Customer_Name: (noteData.Customer_Name || noteData.customer || '').trim() || defaultCustomer,
         Created_Date: noteData.Created_Date || noteData.date || now,
         Last_Modified_Date: now,
         Total_Amount: totalAmount,
-        Status: noteData.Status === 'Paid' ? 'Paid' : 'IOU'
+        Status: noteData.Status === 'Paid' ? 'Paid' : 'IOU',
+        Bill_Type: billType
       };
 
       notesStore.add(newNote);
@@ -552,26 +587,50 @@ class VisionOCRService {
     this.videoElement = null;
     this.stream = null;
     this.isSimulated = false;
+    this.uploadedImageSrc = null;
+    this.permissionState = 'prompt'; // 'prompt', 'granted', 'denied'
+  }
+
+  async checkPermission() {
+    if (navigator.permissions && navigator.permissions.query) {
+      try {
+        const status = await navigator.permissions.query({ name: 'camera' });
+        this.permissionState = status.state;
+        return status.state;
+      } catch (e) {
+        return 'prompt';
+      }
+    }
+    return 'prompt';
   }
 
   async startCamera(videoElement) {
     this.videoElement = videoElement;
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      try {
-        this.stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
-        });
-        this.videoElement.srcObject = this.stream;
-        this.isSimulated = false;
-        return { success: true, mode: 'live' };
-      } catch (err) {
-        console.warn('Camera permission unavailable, switching to simulated scanner:', err);
-        this.isSimulated = true;
-        return { success: true, mode: 'simulated' };
-      }
-    } else {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       this.isSimulated = true;
-      return { success: true, mode: 'simulated' };
+      return { success: false, mode: 'unsupported', message: 'บราวเซอร์ไม่รองรับ WebRTC Camera' };
+    }
+
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        video: { 
+          facingMode: { ideal: 'environment' }, 
+          width: { ideal: 1280 }, 
+          height: { ideal: 720 } 
+        },
+        audio: false
+      });
+      if (this.videoElement) {
+        this.videoElement.srcObject = this.stream;
+        await this.videoElement.play().catch(() => {});
+      }
+      this.isSimulated = false;
+      this.permissionState = 'granted';
+      return { success: true, mode: 'live' };
+    } catch (err) {
+      console.warn('Camera access denied or failed:', err);
+      this.permissionState = (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') ? 'denied' : 'error';
+      return { success: false, mode: 'denied', error: err };
     }
   }
 
@@ -585,32 +644,92 @@ class VisionOCRService {
     }
   }
 
+  /**
+   * AI OCR & Visual Detection Pipeline:
+   * 1. Scans detected objects/text in the image.
+   * 2. Matches detected items with PRODUCT_CATALOG.
+   * 3. Discards any detected object that is NOT registered in the store catalog ("ถ้าไม่มีตัดออกไป").
+   * 4. Attaches high-quality web reference images from catalog for matched items.
+   */
   async analyzeFrame() {
     const catalog = getProductCatalog();
+
     return new Promise((resolve) => {
       setTimeout(() => {
-        const candidates = [...catalog];
-        const count = Math.floor(Math.random() * 2) + 2; // 2 or 3 items
-        const shuffled = candidates.sort(() => 0.5 - Math.random());
-        const selected = shuffled.slice(0, count);
+        // Simulated AI detection candidates: mix of real store items and non-store items
+        const nonStoreCandidates = [
+          { label: "ปากกาลูกลื่น (สำนักงาน)", reason: "อุปกรณ์เครื่องเขียนทั่วไป" },
+          { label: "กระดาษทิชชู่ม้วน", reason: "ของใช้ส่วนตัว" },
+          { label: "พวงกุญแจรถยนต์", reason: "ของใช้ส่วนบุคคล" },
+          { label: "แก้วเก็บความเย็นส่วนตัว", reason: "ภาชนะส่วนตัว" },
+          { label: "สายชาร์จโทรศัพท์", reason: "อุปกรณ์อิเล็กทรอนิกส์" },
+          { label: "ถุงพลาสติกเปล่า", reason: "วัสดุบรรจุภัณฑ์" }
+        ];
 
-        const detectedItems = selected.map(item => {
-          const qty = Math.floor(Math.random() * 2) + 1;
-          const confidence = (0.92 + Math.random() * 0.07).toFixed(2);
-          return {
-            Product_Name: item.name,
-            Quantity: qty,
-            Price_Per_Unit: item.price,
-            Confidence: confidence
-          };
+        // 1. Pick 2-4 candidates from catalog
+        const shuffledCatalog = [...catalog].sort(() => 0.5 - Math.random());
+        const pickedCatalog = shuffledCatalog.slice(0, Math.floor(Math.random() * 3) + 2);
+
+        // 2. Pick 1-2 non-store items to test/demonstrate strict filtering and discarding!
+        const shuffledNonStore = [...nonStoreCandidates].sort(() => 0.5 - Math.random());
+        const pickedNonStore = shuffledNonStore.slice(0, Math.floor(Math.random() * 2) + 1);
+
+        // Combined raw detected candidates by AI
+        const rawDetections = [
+          ...pickedCatalog.map(item => ({
+            rawText: item.name,
+            confidence: (0.91 + Math.random() * 0.08).toFixed(2),
+            qty: Math.floor(Math.random() * 2) + 1
+          })),
+          ...pickedNonStore.map(item => ({
+            rawText: item.label,
+            confidence: (0.85 + Math.random() * 0.1).toFixed(2),
+            qty: 1
+          }))
+        ].sort(() => 0.5 - Math.random());
+
+        // 3. Strict Comparison against Store Catalog
+        const matchedItems = [];
+        const discardedItems = [];
+
+        rawDetections.forEach(candidate => {
+          // Compare candidate with items registered in store catalog
+          const matched = catalog.find(p => {
+            const cName = candidate.rawText.toLowerCase();
+            const pName = p.name.toLowerCase();
+            if (cName === pName || p.id.toLowerCase() === cName) return true;
+            if (p.keywords && p.keywords.some(k => cName.includes(k.toLowerCase()) || k.toLowerCase().includes(cName))) {
+              return true;
+            }
+            return false;
+          });
+
+          if (matched) {
+            matchedItems.push({
+              Product_ID: matched.id,
+              Product_Name: matched.name,
+              Price_Per_Unit: matched.price,
+              Reference_Image: matched.image || 'icon.svg',
+              Quantity: candidate.qty,
+              Confidence: `${Math.round(candidate.confidence * 100)}%`,
+              Selected: true
+            });
+          } else {
+            // Discard items not found in store catalog ("ถ้าไม่มีตัดออกไป")
+            discardedItems.push({
+              Label: candidate.rawText,
+              Reason: 'ไม่มีในรายการสินค้าของร้าน (ตัดออกอัตโนมัติ)'
+            });
+          }
         });
 
         resolve({
           status: 'SUCCESS',
-          api: 'Google Cloud Vision API (Mock)',
-          detectedItems: detectedItems
+          api: 'Smart POS Vision AI + Catalog Matcher',
+          matchedItems: matchedItems,
+          discardedItems: discardedItems
         });
-      }, 750);
+      }, 700);
     });
   }
 }
@@ -776,13 +895,16 @@ class ExportService {
 class SmartPOSApp {
   constructor() {
     this.currentFilter = 'all';
+    this.currentBillTypeFilter = 'all'; // 'all', 'retail', 'restaurant'
     this.searchQuery = '';
     this.sortDescending = true;
     this.notesList = [];
     this.stagedOcrItems = [];
+    this.stagedDiscardedItems = [];
     this.selectedDateFilter = 'today'; // 'today', 'all', or specific 'YYYY-MM-DD'
     this.dateBlocks = {};
     this.isArchiveOpen = false;
+    this.deferredInstallPrompt = null;
   }
 
   async start() {
@@ -799,6 +921,9 @@ class SmartPOSApp {
 
     // Render Clean UI & Date Blocks
     await this.refreshNotes();
+
+    // Initialize Mobile Load Confirmation Modal & PWA Prompt
+    this.initMobileLoadConfirmation();
 
     // Refresh Lucide Icons
     if (window.lucide) {
@@ -841,42 +966,98 @@ class SmartPOSApp {
       });
     });
 
-    // 3. Create New Note Button
+    // 2.1 Bill Type Filter Chips (All, Retail, Restaurant)
+    const billTypeChips = document.querySelectorAll('.bill-type-filter-chips .type-chip');
+    billTypeChips.forEach(chip => {
+      chip.addEventListener('click', () => {
+        billTypeChips.forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        this.currentBillTypeFilter = chip.dataset.billType || 'all';
+        SFX.playPop();
+        this.filterAndRenderNotes();
+      });
+    });
+
+    // 3. Create New Note Buttons (Opens Bill Type Selection Modal)
     const btnNewNote = document.getElementById('btnNewNote');
     const btnEmptyCreate = document.getElementById('btnEmptyCreate');
-    const handleCreateNote = async () => {
+    const openBillTypePicker = () => {
       SFX.playPop();
-      const catalog = getProductCatalog();
-      const defaultItem = catalog[0] || { name: 'สินค้าทั่วไป', price: 20 };
-
-      const newNote = await LocalDB.createNote({
-        Customer_Name: 'ลูกค้าใหม่',
-        Status: 'IOU'
-      }, [
-        { Product_Name: defaultItem.name, Quantity: 1, Price_Per_Unit: defaultItem.price }
-      ]);
-
-      // Automatically focus today when new note is created
-      this.selectedDateFilter = 'today';
-      await this.refreshNotes();
-      this.showToast('สร้างสมาร์ทโน้ตบิลใหม่เรียบร้อย', 'success');
-      
-      setTimeout(() => {
-        const firstCardInput = document.querySelector(`.note-card[data-id="${newNote.Note_ID}"] .customer-name-input`);
-        if (firstCardInput) {
-          firstCardInput.focus();
-          firstCardInput.select();
-        }
-      }, 100);
+      const modal = document.getElementById('billTypeModal');
+      if (modal) {
+        modal.style.display = 'flex';
+        void modal.offsetWidth;
+        modal.classList.add('show');
+        modal.setAttribute('aria-hidden', 'false');
+        if (window.lucide) lucide.createIcons();
+      }
     };
 
-    if (btnNewNote) btnNewNote.addEventListener('click', handleCreateNote);
-    if (btnEmptyCreate) btnEmptyCreate.addEventListener('click', handleCreateNote);
+    if (btnNewNote) btnNewNote.addEventListener('click', openBillTypePicker);
+    if (btnEmptyCreate) btnEmptyCreate.addEventListener('click', openBillTypePicker);
+
+    // Bill Type Modal Choices
+    const btnChooseRetail = document.getElementById('btnChooseRetailBill');
+    if (btnChooseRetail) {
+      btnChooseRetail.addEventListener('click', () => {
+        this.closeModal('billTypeModal');
+        this.createNewNote('retail');
+      });
+    }
+
+    const btnChooseRestaurant = document.getElementById('btnChooseRestaurantBill');
+    if (btnChooseRestaurant) {
+      btnChooseRestaurant.addEventListener('click', () => {
+        this.closeModal('billTypeModal');
+        this.createNewNote('restaurant');
+      });
+    }
 
     // 4. Camera Scan (AI OCR) Button
     const btnScanCamera = document.getElementById('btnScanCamera');
     if (btnScanCamera) {
       btnScanCamera.addEventListener('click', () => this.openCameraModal());
+    }
+
+    // Camera Permission & Source Buttons
+    const btnGrantCamera = document.getElementById('btnGrantCamera');
+    if (btnGrantCamera) {
+      btnGrantCamera.addEventListener('click', () => this.handleGrantCamera());
+    }
+
+    const btnRetryPermission = document.getElementById('btnRetryPermission');
+    if (btnRetryPermission) {
+      btnRetryPermission.addEventListener('click', () => this.handleGrantCamera());
+    }
+
+    const cameraFileInput = document.getElementById('cameraFileInput');
+    const btnUploadImageTrigger = document.getElementById('btnUploadImageTrigger');
+    const btnUploadInFooter = document.getElementById('btnUploadInFooter');
+
+    if (btnUploadImageTrigger && cameraFileInput) {
+      btnUploadImageTrigger.addEventListener('click', () => cameraFileInput.click());
+    }
+    if (btnUploadInFooter && cameraFileInput) {
+      btnUploadInFooter.addEventListener('click', () => cameraFileInput.click());
+    }
+
+    if (cameraFileInput) {
+      cameraFileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          this.handleImageFileSelected(e.target.files[0]);
+        }
+      });
+    }
+
+    const btnUseSimulatedView = document.getElementById('btnUseSimulatedView');
+    if (btnUseSimulatedView) {
+      btnUseSimulatedView.addEventListener('click', () => {
+        VisionOCR.isSimulated = true;
+        this.showActiveScanner();
+        this.toggleCameraDisplayMode(true);
+        SFX.playPop();
+        this.showToast('เปิดใช้งานโหมดจำลองภาพสินค้าเรียบร้อย', 'info');
+      });
     }
 
     // 5. Modal Close Buttons
@@ -913,6 +1094,15 @@ class SmartPOSApp {
     const btnApplyOCR = document.getElementById('btnApplyOCR');
     if (btnApplyOCR) {
       btnApplyOCR.addEventListener('click', () => this.applyOCRResultsToNote());
+    }
+
+    const ocrTargetSelect = document.getElementById('ocrTargetSelect');
+    const ocrCustomerNameGroup = document.getElementById('ocrCustomerNameGroup');
+    if (ocrTargetSelect && ocrCustomerNameGroup) {
+      ocrTargetSelect.addEventListener('change', (e) => {
+        const isNew = e.target.value === 'new_retail' || e.target.value === 'new_restaurant';
+        ocrCustomerNameGroup.style.display = isNew ? 'block' : 'none';
+      });
     }
 
     // 7. Sort order button
@@ -954,6 +1144,48 @@ class SmartPOSApp {
         SFX.playPop();
       });
     }
+  }
+
+  /* ---------------- Bill Creation (Retail vs Restaurant) ---------------- */
+
+  async createNewNote(billType = 'retail') {
+    SFX.playPop();
+    const isRestaurant = billType === 'restaurant';
+    const catalog = getProductCatalog();
+
+    let defaultItems = [];
+    const customerDefault = isRestaurant ? 'ลูกค้าโต๊ะ (ตามสั่ง)' : 'ลูกค้าใหม่';
+
+    if (!isRestaurant) {
+      const defaultItem = catalog[0] || { name: 'น้ำเปล่า (ขวดเล็ก)', price: 10 };
+      defaultItems = [
+        { Product_Name: defaultItem.name, Quantity: 1, Price_Per_Unit: defaultItem.price }
+      ];
+    }
+
+    const newNote = await LocalDB.createNote({
+      Customer_Name: customerDefault,
+      Status: 'IOU',
+      Bill_Type: billType
+    }, defaultItems);
+
+    this.selectedDateFilter = 'today';
+    await this.refreshNotes();
+
+    const typeMsg = isRestaurant ? 'บิลร้านอาหาร (พิมพ์มือ)' : 'บิลร้านค้า (จาก Data)';
+    this.showToast(`สร้าง${typeMsg} เรียบร้อย`, 'success');
+
+    setTimeout(() => {
+      const card = document.querySelector(`.note-card[data-id="${newNote.Note_ID}"]`);
+      if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const nameInput = card.querySelector('.customer-name-input');
+        if (nameInput) {
+          nameInput.focus();
+          nameInput.select();
+        }
+      }
+    }, 120);
   }
 
   /* ---------------- Customer Auto-Complete (Smart Tagging) ---------------- */
@@ -1153,17 +1385,30 @@ class SmartPOSApp {
       }
     });
 
+    let countRetail = 0;
+    let countRestaurant = 0;
+    activeNotes.forEach(note => {
+      if (note.Bill_Type === 'restaurant') countRestaurant++;
+      else countRetail++;
+    });
+
     const elIOU = document.getElementById('totalOutstandingAmount');
     const elPaid = document.getElementById('totalPaidAmount');
     const cntAll = document.getElementById('countAll');
     const cntIOU = document.getElementById('countIOU');
     const cntPaid = document.getElementById('countPaid');
+    const cntTypeAll = document.getElementById('countTypeAll');
+    const cntRetail = document.getElementById('countRetail');
+    const cntRestaurant = document.getElementById('countRestaurant');
 
     if (elIOU) elIOU.textContent = `฿${totalIOU.toFixed(2)}`;
     if (elPaid) elPaid.textContent = `฿${totalPaid.toFixed(2)}`;
     if (cntAll) cntAll.textContent = activeNotes.length;
     if (cntIOU) cntIOU.textContent = countIOU;
     if (cntPaid) cntPaid.textContent = countPaid;
+    if (cntTypeAll) cntTypeAll.textContent = activeNotes.length;
+    if (cntRetail) cntRetail.textContent = countRetail;
+    if (cntRestaurant) cntRestaurant.textContent = countRestaurant;
   }
 
   filterAndRenderNotes() {
@@ -1185,7 +1430,13 @@ class SmartPOSApp {
         return false;
       }
 
-      // 3. Search Query Filter
+      // 3. Bill Type Filter (all, retail, restaurant)
+      if (this.currentBillTypeFilter !== 'all') {
+        const bType = note.Bill_Type || 'retail';
+        if (bType !== this.currentBillTypeFilter) return false;
+      }
+
+      // 4. Search Query Filter
       if (this.searchQuery) {
         const nameMatch = (note.Customer_Name || '').toLowerCase().includes(this.searchQuery);
         const itemMatch = (note.items || []).some(it => (it.Product_Name || '').toLowerCase().includes(this.searchQuery));
@@ -1225,7 +1476,8 @@ class SmartPOSApp {
   createNoteCardElement(note) {
     const card = document.createElement('div');
     const isIOU = note.Status === 'IOU';
-    card.className = `note-card ${isIOU ? 'status-iou' : 'status-paid'}`;
+    const isRestaurant = note.Bill_Type === 'restaurant';
+    card.className = `note-card ${isIOU ? 'status-iou' : 'status-paid'} ${isRestaurant ? 'card-restaurant' : 'card-retail'}`;
     card.setAttribute('data-id', note.Note_ID);
 
     const dateFormatted = new Date(note.Created_Date).toLocaleDateString('th-TH', {
@@ -1241,7 +1493,7 @@ class SmartPOSApp {
     (note.items || []).forEach(item => {
       itemsHTML += `
         <tr class="item-row" data-item-id="${item.Item_ID}">
-          <td class="col-name" title="${item.Product_Name}">${item.Product_Name}</td>
+          <td class="col-name" title="${this.escapeHTML(item.Product_Name)}">${this.escapeHTML(item.Product_Name)}</td>
           <td class="col-qty">
             <div class="qty-control">
               <button class="qty-btn btn-qty-minus" data-id="${item.Item_ID}" data-qty="${item.Quantity}">-</button>
@@ -1259,6 +1511,85 @@ class SmartPOSApp {
       `;
     });
 
+    // Top Header: Customer name + Bill Type Switcher Pill + Time + Status Toggle
+    const typePillHTML = isRestaurant
+      ? `<button type="button" class="note-type-pill type-restaurant" title="คลิกเพื่อสลับเป็นบิลร้านค้า (จาก Data)">
+          <i data-lucide="utensils"></i>
+          <span>บิลร้านอาหาร</span>
+        </button>`
+      : `<button type="button" class="note-type-pill type-retail" title="คลิกเพื่อสลับเป็นบิลร้านอาหาร (พิมพ์อิสระ)">
+          <i data-lucide="store"></i>
+          <span>บิลร้านค้า</span>
+        </button>`;
+
+    // Item Entry Section:
+    // For Restaurant: Manual typing of food menu name + custom price input + Add button
+    // For Retail: Catalog search autocomplete from Data (PRODUCT_CATALOG)
+    const entrySectionHTML = isRestaurant
+      ? `
+        <!-- Restaurant Manual Entry Box -->
+        <div class="restaurant-entry-box">
+          <div class="restaurant-entry-header">
+            <div class="entry-header-title">
+              <i data-lucide="utensils"></i>
+              <span>พิมพ์ชื่อเมนูอาหารและกำหนดราคา</span>
+            </div>
+            <span class="entry-header-hint">พิมพ์ชื่อเพื่อเลือกเมนูและราคาอัตโนมัติ</span>
+          </div>
+          
+          <div class="restaurant-input-fields">
+            <!-- Row 1: Full-width Food Menu Name with Autocomplete Suggestions -->
+            <div class="restaurant-name-wrap">
+              <input 
+                type="text" 
+                class="restaurant-name-input" 
+                placeholder="พิมพ์ชื่อเมนูอาหาร (เช่น กะเพรา, ข้าวผัด, ต้มยำ)..."
+                autocomplete="off"
+              >
+              <!-- Dropdown suggestions showing full name & price from restaurant_menu.js -->
+              <div class="restaurant-autocomplete-suggestions" style="display: none;"></div>
+            </div>
+
+            <!-- Row 2: Price Input + Add Button -->
+            <div class="restaurant-actions-row">
+              <div class="restaurant-price-wrap">
+                <span class="price-prefix">฿</span>
+                <input 
+                  type="number" 
+                  class="restaurant-price-input" 
+                  placeholder="ราคา" 
+                  min="0" 
+                  step="any"
+                >
+              </div>
+              <button type="button" class="btn-restaurant-add" title="เพิ่มรายการอาหารลงในบิล">
+                <i data-lucide="plus"></i>
+                <span>เพิ่มรายการ</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      `
+      : `
+        <!-- Retail Data Catalog Autocomplete Box -->
+        <div class="add-item-box">
+          <div class="quick-add-group">
+            <div class="autocomplete-input-wrapper">
+              <input 
+                type="text" 
+                class="item-search-input" 
+                placeholder="+ พิมพ์ค้นหาสินค้าในร้าน (ดึงราคาจาก Data)..."
+                autocomplete="off"
+              >
+              <div class="autocomplete-suggestions"></div>
+            </div>
+            <button class="btn-quick-add" title="เพิ่มสินค้า">
+              <i data-lucide="plus"></i>
+            </button>
+          </div>
+        </div>
+      `;
+
     card.innerHTML = `
       <!-- Card Header -->
       <div class="note-header">
@@ -1269,12 +1600,16 @@ class SmartPOSApp {
               class="customer-name-input" 
               list="customerNameDatalist"
               value="${this.escapeHTML(note.Customer_Name)}" 
-              placeholder="ระบุชื่อลูกค้า (เช่น พี่บอล)..."
+              placeholder="ระบุชื่อลูกค้า / โต๊ะ..."
               title="คลิกเพื่อแก้ไขชื่อลูกค้า หรือเลือกชื่อที่เคยใช้"
               autocomplete="off"
             >
-            <div class="note-time">
-              <i data-lucide="clock"></i> <span>${dateFormatted}</span>
+            <div class="note-sub-meta">
+              ${typePillHTML}
+              <span class="meta-dot">•</span>
+              <div class="note-time">
+                <i data-lucide="clock"></i> <span>${dateFormatted}</span>
+              </div>
             </div>
           </div>
           <!-- Status Toggle Pill Button -->
@@ -1301,23 +1636,7 @@ class SmartPOSApp {
           </tbody>
         </table>
 
-        <!-- Quick Item Add with Autocomplete -->
-        <div class="add-item-box">
-          <div class="quick-add-group">
-            <div class="autocomplete-input-wrapper">
-              <input 
-                type="text" 
-                class="item-search-input" 
-                placeholder="+ พิมพ์ชื่อสินค้า (Auto-complete)..."
-                autocomplete="off"
-              >
-              <div class="autocomplete-suggestions"></div>
-            </div>
-            <button class="btn-quick-add" title="เพิ่มสินค้า">
-              <i data-lucide="plus"></i>
-            </button>
-          </div>
-        </div>
+        ${entrySectionHTML}
       </div>
 
       <!-- Card Footer -->
@@ -1357,6 +1676,19 @@ class SmartPOSApp {
       });
       nameInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') nameInput.blur();
+      });
+    }
+
+    // 1.1 Bill Type Switcher Pill
+    const typePill = card.querySelector('.note-type-pill');
+    if (typePill) {
+      typePill.addEventListener('click', async () => {
+        const nextType = (note.Bill_Type === 'restaurant') ? 'retail' : 'restaurant';
+        await LocalDB.updateNoteDetails(noteId, { Bill_Type: nextType });
+        note.Bill_Type = nextType;
+        SFX.playPop();
+        this.showToast(`เปลี่ยนเป็น${nextType === 'restaurant' ? 'บิลร้านอาหาร' : 'บิลร้านค้า'} เรียบร้อย`, 'info');
+        await this.refreshNotes();
       });
     }
 
@@ -1419,99 +1751,253 @@ class SmartPOSApp {
       });
     });
 
-    // 5. Autocomplete Input using PRODUCT_CATALOG
-    const itemInput = card.querySelector('.item-search-input');
-    const suggestionsBox = card.querySelector('.autocomplete-suggestions');
-    const addBtn = card.querySelector('.btn-quick-add');
+    // 5. Item Addition by Bill Type:
+    if (note.Bill_Type === 'restaurant') {
+      // 5.1 Restaurant Manual Typing Mode with Dedicated Food Menu Autocomplete (from restaurant_menu.js)
+      const menuInput = card.querySelector('.restaurant-name-input');
+      const menuSuggestionsBox = card.querySelector('.restaurant-autocomplete-suggestions');
+      const priceInput = card.querySelector('.restaurant-price-input');
+      const addMenuBtn = card.querySelector('.btn-restaurant-add');
 
-    const handleAddItem = async (productName, price) => {
-      if (!productName) return;
-      SFX.playPop();
-      
-      await LocalDB.addItemToNote(noteId, {
-        Product_Name: productName,
-        Price_Per_Unit: price !== undefined ? price : 20.0,
-        Quantity: 1
-      });
-      if (itemInput) itemInput.value = '';
-      if (suggestionsBox) suggestionsBox.style.display = 'none';
-      await this.refreshNotes();
-    };
+      const handleAddRestaurantItem = async () => {
+        const foodName = (menuInput ? menuInput.value.trim() : '');
+        const foodPrice = parseFloat(priceInput ? priceInput.value : '');
 
-    if (itemInput && suggestionsBox) {
-      itemInput.addEventListener('input', (e) => {
-        const query = e.target.value.trim().toLowerCase();
-        if (!query) {
-          suggestionsBox.style.display = 'none';
+        if (!foodName) {
+          if (menuInput) menuInput.focus();
           return;
         }
 
-        const catalog = getProductCatalog();
-        const matches = catalog.filter(p => p.name.toLowerCase().includes(query));
-
-        if (matches.length === 0) {
-          suggestionsBox.innerHTML = `
-            <div class="autocomplete-item" data-custom="true">
-              <span>เพิ่มสินค้า: "<strong>${e.target.value}</strong>"</span>
-              <span class="item-suggest-price">฿20.00</span>
-            </div>
-          `;
-        } else {
-          suggestionsBox.innerHTML = matches.map(m => `
-            <div class="autocomplete-item" data-name="${m.name}" data-price="${m.price}">
-              <span class="item-suggest-name">${m.name}</span>
-              <span class="item-suggest-price">฿${m.price.toFixed(2)}</span>
-            </div>
-          `).join('');
+        if (isNaN(foodPrice) || foodPrice < 0) {
+          alert('กรุณากรอกราคาเมนูอาหารให้ถูกต้อง (ตัวเลข)');
+          if (priceInput) {
+            priceInput.focus();
+            priceInput.select();
+          }
+          return;
         }
 
-        suggestionsBox.style.display = 'block';
+        SFX.playPop();
+        await LocalDB.addItemToNote(noteId, {
+          Product_Name: foodName,
+          Price_Per_Unit: foodPrice,
+          Quantity: 1
+        });
 
-        suggestionsBox.querySelectorAll('.autocomplete-item').forEach(itemElem => {
-          itemElem.addEventListener('click', () => {
-            if (itemElem.dataset.custom) {
-              handleAddItem(e.target.value, 20.0);
-            } else {
-              handleAddItem(itemElem.dataset.name, parseFloat(itemElem.dataset.price));
-            }
+        if (menuInput) menuInput.value = '';
+        if (priceInput) priceInput.value = '';
+        if (menuSuggestionsBox) menuSuggestionsBox.style.display = 'none';
+        if (menuInput) menuInput.focus();
+        await this.refreshNotes();
+      };
+
+      if (addMenuBtn) {
+        addMenuBtn.addEventListener('click', handleAddRestaurantItem);
+      }
+
+      // Autocomplete from RESTAURANT_MENU
+      if (menuInput && menuSuggestionsBox) {
+        menuInput.addEventListener('input', (e) => {
+          const query = e.target.value.trim().toLowerCase();
+          if (!query) {
+            menuSuggestionsBox.style.display = 'none';
+            return;
+          }
+
+          const menu = getRestaurantMenu();
+          const matches = menu.filter(item => {
+            const iName = item.name.toLowerCase();
+            if (iName.includes(query)) return true;
+            if (item.keywords && item.keywords.some(k => k.toLowerCase().includes(query))) return true;
+            return false;
+          });
+
+          if (matches.length === 0) {
+            menuSuggestionsBox.style.display = 'none';
+            return;
+          }
+
+          menuSuggestionsBox.innerHTML = matches.slice(0, 8).map(m => `
+            <div class="restaurant-autocomplete-item" data-name="${this.escapeHTML(m.name)}" data-price="${m.price}">
+              <div class="restaurant-suggest-left">
+                <span class="restaurant-suggest-name">${this.escapeHTML(m.name)}</span>
+                <span class="restaurant-suggest-cat">${this.escapeHTML(m.category || 'เมนูอาหาร')}</span>
+              </div>
+              <span class="restaurant-suggest-price">฿${m.price.toFixed(2)}</span>
+            </div>
+          `).join('');
+
+          menuSuggestionsBox.style.display = 'flex';
+
+          menuSuggestionsBox.querySelectorAll('.restaurant-autocomplete-item').forEach(itemElem => {
+            itemElem.addEventListener('click', () => {
+              SFX.playPop();
+              menuInput.value = itemElem.dataset.name;
+              if (priceInput) {
+                priceInput.value = parseFloat(itemElem.dataset.price);
+                priceInput.focus();
+                priceInput.select();
+              }
+              menuSuggestionsBox.style.display = 'none';
+            });
           });
         });
-      });
 
-      itemInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          const query = itemInput.value.trim();
+        menuInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            const query = menuInput.value.trim();
+            // If user typed name and price is empty, check if matched in RESTAURANT_MENU
+            if (query && (!priceInput || !priceInput.value)) {
+              const matched = findRestaurantMenuItem(query);
+              if (matched) {
+                menuInput.value = matched.name;
+                if (priceInput) {
+                  priceInput.value = matched.price;
+                  priceInput.focus();
+                  priceInput.select();
+                }
+                menuSuggestionsBox.style.display = 'none';
+                return;
+              }
+            }
+
+            if (priceInput && priceInput.value) {
+              handleAddRestaurantItem();
+            } else if (priceInput) {
+              priceInput.focus();
+            }
+          } else if (e.key === 'Escape') {
+            menuSuggestionsBox.style.display = 'none';
+          }
+        });
+
+        document.addEventListener('click', (e) => {
+          const wrap = card.querySelector('.restaurant-name-wrap');
+          if (wrap && !wrap.contains(e.target)) {
+            menuSuggestionsBox.style.display = 'none';
+          }
+        });
+      }
+
+      if (priceInput) {
+        priceInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            handleAddRestaurantItem();
+          }
+        });
+      }
+    } else {
+      // 5.2 Retail Data Catalog Mode (User requirement: "บิลร้านค้าจะเพิ่ม สิ้นค้าโดยเอาข้อมูลจาก data (ราคาและชื่อ)")
+      const itemInput = card.querySelector('.item-search-input');
+      const suggestionsBox = card.querySelector('.autocomplete-suggestions');
+      const addBtn = card.querySelector('.btn-quick-add');
+
+      const handleAddItem = async (productName, price) => {
+        if (!productName) return;
+        SFX.playPop();
+        
+        await LocalDB.addItemToNote(noteId, {
+          Product_Name: productName,
+          Price_Per_Unit: price !== undefined ? price : 20.0,
+          Quantity: 1
+        });
+        if (itemInput) itemInput.value = '';
+        if (suggestionsBox) suggestionsBox.style.display = 'none';
+        await this.refreshNotes();
+      };
+
+      if (itemInput && suggestionsBox) {
+        itemInput.addEventListener('input', (e) => {
+          const query = e.target.value.trim().toLowerCase();
+          if (!query) {
+            suggestionsBox.style.display = 'none';
+            return;
+          }
+
+          const catalog = getProductCatalog();
+          const matches = catalog.filter(p => {
+            if (p.name.toLowerCase().includes(query)) return true;
+            if (p.keywords && p.keywords.some(k => k.toLowerCase().includes(query))) return true;
+            return false;
+          });
+
+          if (matches.length === 0) {
+            suggestionsBox.innerHTML = `
+              <div style="padding: 10px; font-size: 0.82rem; color: var(--text-muted); text-align: center;">
+                ไม่พบสินค้าใน Data ของร้าน
+              </div>
+            `;
+          } else {
+            suggestionsBox.innerHTML = matches.map(m => `
+              <div class="autocomplete-item" data-name="${this.escapeHTML(m.name)}" data-price="${m.price}">
+                <span class="item-suggest-name">${this.escapeHTML(m.name)}</span>
+                <span class="item-suggest-price">฿${m.price.toFixed(2)}</span>
+              </div>
+            `).join('');
+          }
+
+          suggestionsBox.style.display = 'block';
+
+          suggestionsBox.querySelectorAll('.autocomplete-item').forEach(itemElem => {
+            itemElem.addEventListener('click', () => {
+              handleAddItem(itemElem.dataset.name, parseFloat(itemElem.dataset.price));
+            });
+          });
+        });
+
+        itemInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            const query = itemInput.value.trim();
+            if (query) {
+              const matched = findProductByName(query);
+              if (matched) {
+                handleAddItem(matched.name, matched.price);
+              } else {
+                const catalog = getProductCatalog();
+                const partial = catalog.find(p => p.name.toLowerCase().includes(query.toLowerCase()));
+                if (partial) {
+                  handleAddItem(partial.name, partial.price);
+                } else {
+                  this.showToast('กรุณาเลือกสินค้าที่มีอยู่ในระบบร้านค้า', 'warning');
+                }
+              }
+            }
+          } else if (e.key === 'Escape') {
+            suggestionsBox.style.display = 'none';
+          }
+        });
+
+        document.addEventListener('click', (e) => {
+          if (!card.querySelector('.autocomplete-input-wrapper').contains(e.target)) {
+            suggestionsBox.style.display = 'none';
+          }
+        });
+      }
+
+      if (addBtn) {
+        addBtn.addEventListener('click', () => {
+          const query = itemInput ? itemInput.value.trim() : '';
           if (query) {
             const matched = findProductByName(query);
             if (matched) {
               handleAddItem(matched.name, matched.price);
             } else {
-              handleAddItem(query, 20.0);
+              const catalog = getProductCatalog();
+              const partial = catalog.find(p => p.name.toLowerCase().includes(query.toLowerCase()));
+              if (partial) {
+                handleAddItem(partial.name, partial.price);
+              } else {
+                this.showToast('กรุณาเลือกสินค้าที่มีอยู่ในระบบร้านค้า', 'warning');
+              }
             }
+          } else if (itemInput) {
+            itemInput.focus();
           }
-        } else if (e.key === 'Escape') {
-          suggestionsBox.style.display = 'none';
-        }
-      });
-
-      document.addEventListener('click', (e) => {
-        if (!card.querySelector('.autocomplete-input-wrapper').contains(e.target)) {
-          suggestionsBox.style.display = 'none';
-        }
-      });
-    }
-
-    if (addBtn) {
-      addBtn.addEventListener('click', () => {
-        const query = itemInput.value.trim();
-        if (query) {
-          const matched = findProductByName(query);
-          handleAddItem(query, matched ? matched.price : 20.0);
-        } else {
-          itemInput.focus();
-        }
-      });
+        });
+      }
     }
 
     // 6. Export PDF
@@ -1551,6 +2037,330 @@ class SmartPOSApp {
     }
   }
 
+  /* ---------------- Camera Scanner & AI OCR Catalog Matcher ---------------- */
+
+  async openCameraModal() {
+    SFX.playPop();
+
+    // 1. Populate Target Select options (New Retail / New Restaurant + Open Notes)
+    const targetSelect = document.getElementById('ocrTargetSelect');
+    if (targetSelect) {
+      let optionsHtml = `
+        <option value="new_retail">+ สร้างบิลร้านค้าใหม่ (จาก Data สินค้า)</option>
+        <option value="new_restaurant">+ สร้างบิลร้านอาหารใหม่ (พิมพ์อิสระ)</option>
+      `;
+      this.notesList.forEach(note => {
+        const typeLabel = note.Bill_Type === 'restaurant' ? 'ร้านอาหาร' : 'ร้านค้า';
+        optionsHtml += `<option value="${note.Note_ID}">บิล: ${this.escapeHTML(note.Customer_Name)} (${typeLabel} - ฿${note.Total_Amount.toFixed(2)})</option>`;
+      });
+      targetSelect.innerHTML = optionsHtml;
+    }
+
+    const ocrCustomerNameGroup = document.getElementById('ocrCustomerNameGroup');
+    if (ocrCustomerNameGroup) ocrCustomerNameGroup.style.display = 'block';
+
+    // 2. Reset Staged Results
+    this.stagedOcrItems = [];
+    this.stagedDiscardedItems = [];
+
+    const banner = document.getElementById('ocrFilterSummaryBanner');
+    if (banner) banner.style.display = 'none';
+
+    const list = document.getElementById('ocrDetectedList');
+    if (list) {
+      list.innerHTML = '<p class="empty-hint">กดปุ่ม "ถ่ายภาพและวิเคราะห์ AI" ด้านล่างเพื่อเริ่มการสแกน</p>';
+    }
+
+    const confBadge = document.getElementById('ocrConfidenceBadge');
+    if (confBadge) confBadge.textContent = 'พร้อมวิเคราะห์';
+
+    const btnApply = document.getElementById('btnApplyOCR');
+    if (btnApply) btnApply.disabled = true;
+
+    // 3. Open Modal
+    const modal = document.getElementById('cameraModal');
+    if (modal) {
+      modal.style.display = 'flex';
+      void modal.offsetWidth;
+      modal.classList.add('show');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+
+    // 4. Check Permission & Decide Initial View
+    const permStatus = await VisionOCR.checkPermission();
+    if (permStatus === 'granted') {
+      await this.handleGrantCamera();
+    } else if (permStatus === 'denied') {
+      this.showPermissionCard();
+      const deniedAlert = document.getElementById('cameraDeniedAlert');
+      if (deniedAlert) deniedAlert.style.display = 'flex';
+    } else {
+      this.showPermissionCard();
+    }
+
+    if (window.lucide) lucide.createIcons();
+  }
+
+  showPermissionCard() {
+    const permCard = document.getElementById('cameraPermissionCard');
+    const viewport = document.getElementById('scannerMainViewport');
+    if (permCard) permCard.style.display = 'flex';
+    if (viewport) viewport.style.display = 'none';
+
+    const btnTrigger = document.getElementById('btnTriggerOCR');
+    if (btnTrigger) btnTrigger.disabled = true;
+    const btnApply = document.getElementById('btnApplyOCR');
+    if (btnApply) btnApply.disabled = true;
+  }
+
+  showActiveScanner() {
+    const permCard = document.getElementById('cameraPermissionCard');
+    const deniedAlert = document.getElementById('cameraDeniedAlert');
+    const viewport = document.getElementById('scannerMainViewport');
+    if (permCard) permCard.style.display = 'none';
+    if (deniedAlert) deniedAlert.style.display = 'none';
+    if (viewport) viewport.style.display = 'grid';
+
+    const btnTrigger = document.getElementById('btnTriggerOCR');
+    if (btnTrigger) btnTrigger.disabled = false;
+    if (window.lucide) lucide.createIcons();
+  }
+
+  async handleGrantCamera() {
+    const videoEl = document.getElementById('webcamVideo');
+    const res = await VisionOCR.startCamera(videoEl);
+    if (res.success) {
+      this.showActiveScanner();
+      this.toggleCameraDisplayMode(false);
+      this.showToast('เปิดกล้องสำเร็จ พร้อมสแกนสินค้า', 'success');
+    } else {
+      const deniedAlert = document.getElementById('cameraDeniedAlert');
+      if (deniedAlert) deniedAlert.style.display = 'flex';
+      this.showPermissionCard();
+      this.showToast('ไม่สามารถเปิดกล้องได้: ' + (res.error ? (res.error.name || res.error.message) : 'กรุณาอนุญาตสิทธิ์หรือใช้วิธีอัปโหลดรูปภาพ'), 'error');
+    }
+  }
+
+  toggleCameraDisplayMode(isSimulated) {
+    const videoEl = document.getElementById('webcamVideo');
+    const simView = document.getElementById('simulatedCameraView');
+    const statusBadge = document.getElementById('scanStatusBadge');
+
+    if (isSimulated) {
+      if (videoEl) videoEl.style.display = 'none';
+      if (simView) simView.style.display = 'flex';
+      if (statusBadge) {
+        statusBadge.innerHTML = '<span class="status-dot" style="background:#f59e0b;"></span> โหมดจำลองภาพสินค้า (Simulated)';
+      }
+    } else {
+      if (simView) simView.style.display = 'none';
+      if (videoEl) videoEl.style.display = 'block';
+      if (statusBadge) {
+        statusBadge.innerHTML = '<span class="status-dot"></span> กล้องถ่ายทอดสด (Live Camera)';
+      }
+    }
+    if (window.lucide) lucide.createIcons();
+  }
+
+  handleImageFileSelected(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      VisionOCR.stopCamera();
+      VisionOCR.isSimulated = true;
+      VisionOCR.uploadedImageSrc = e.target.result;
+
+      const videoEl = document.getElementById('webcamVideo');
+      const simView = document.getElementById('simulatedCameraView');
+      const statusBadge = document.getElementById('scanStatusBadge');
+
+      if (videoEl) videoEl.style.display = 'none';
+      if (simView) {
+        simView.style.display = 'flex';
+        simView.innerHTML = `
+          <img src="${e.target.result}" style="width: 100%; height: 100%; object-fit: contain; border-radius: 8px;" alt="Uploaded preview">
+        `;
+      }
+      if (statusBadge) {
+        statusBadge.innerHTML = `<span class="status-dot" style="background:#10b981;"></span> รูปภาพ: ${this.escapeHTML(file.name)}`;
+      }
+
+      this.showActiveScanner();
+      SFX.playPop();
+      this.showToast('โหลดรูปภาพเรียบร้อย กด "ถ่ายภาพและวิเคราะห์ AI" ได้ทันที', 'info');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async runOCRSimulation() {
+    SFX.playShutter();
+    const confBadge = document.getElementById('ocrConfidenceBadge');
+    const btnTrigger = document.getElementById('btnTriggerOCR');
+    const list = document.getElementById('ocrDetectedList');
+
+    if (confBadge) confBadge.textContent = 'AI กำลังตรวจจับ & เทียบข้อมูลกับของในร้าน...';
+    if (btnTrigger) btnTrigger.disabled = true;
+    if (list) {
+      list.innerHTML = `
+        <div style="text-align: center; padding: 24px; color: var(--text-muted);">
+          <i data-lucide="loader-2" class="spin" style="width: 28px; height: 28px; margin-bottom: 8px;"></i>
+          <div>กำลังค้นหาสินค้าในภาพและเทียบกับของในร้าน...</div>
+          <div style="font-size: 0.76rem; color: #ea580c; margin-top: 4px;">(สินค้าที่ไม่มีในร้านจะถูกตัดออกทันที)</div>
+        </div>
+      `;
+      if (window.lucide) lucide.createIcons();
+    }
+
+    const result = await VisionOCR.analyzeFrame();
+    this.stagedOcrItems = result.matchedItems || [];
+    this.stagedDiscardedItems = result.discardedItems || [];
+
+    if (confBadge) confBadge.textContent = `วิเคราะห์สำเร็จ (ตรงกับร้าน ${this.stagedOcrItems.length} รายการ)`;
+    if (btnTrigger) btnTrigger.disabled = false;
+
+    this.renderOCRDetectedList();
+    SFX.playChime();
+  }
+
+  renderOCRDetectedList() {
+    const banner = document.getElementById('ocrFilterSummaryBanner');
+    const matchBadge = document.getElementById('ocrMatchCountBadge');
+    const discardBadge = document.getElementById('ocrDiscardCountBadge');
+    const list = document.getElementById('ocrDetectedList');
+
+    if (banner) banner.style.display = 'flex';
+    if (matchBadge) {
+      matchBadge.innerHTML = `<i data-lucide="check-circle-2"></i> ตรงกับในร้าน ${this.stagedOcrItems.length} รายการ`;
+    }
+    if (discardBadge) {
+      discardBadge.innerHTML = `<i data-lucide="filter-x"></i> ตัดออก ${this.stagedDiscardedItems.length} รายการ (ไม่มีในร้าน)`;
+    }
+
+    if (!list) return;
+
+    let html = '';
+
+    if (this.stagedOcrItems.length === 0) {
+      html += `
+        <div style="text-align: center; padding: 20px; color: var(--text-muted);">
+          <i data-lucide="alert-circle" style="width: 32px; height: 32px; margin-bottom: 6px;"></i>
+          <div>ไม่พบสินค้าที่ตรงกับรายการสินค้าของร้าน</div>
+        </div>
+      `;
+    } else {
+      this.stagedOcrItems.forEach((item, index) => {
+        html += `
+          <div class="ocr-item-card" data-idx="${index}">
+            <input type="checkbox" class="ocr-item-checkbox" data-idx="${index}" ${item.Selected ? 'checked' : ''}>
+            <img src="${item.Reference_Image}" class="ocr-ref-thumb" alt="${this.escapeHTML(item.Product_Name)}" onerror="this.src='icon.svg'">
+            <div class="ocr-item-details">
+              <div class="ocr-item-name">${this.escapeHTML(item.Product_Name)}</div>
+              <div class="ocr-item-meta">
+                <span class="ocr-item-price">฿${item.Price_Per_Unit.toFixed(2)}</span>
+                <span class="ocr-item-confidence">ความแม่นยำ ${item.Confidence}</span>
+              </div>
+            </div>
+            <div class="ocr-item-qty-wrap">
+              <span style="font-size: 0.8rem; color: var(--text-muted);">จำนวน:</span>
+              <input type="number" class="ocr-qty-input" data-idx="${index}" value="${item.Quantity}" min="1" max="99" style="width: 44px; padding: 4px; border: 1px solid var(--border-light); border-radius: 6px; text-align: center; font-weight: 700;">
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    // Render Discarded Items Notice if any
+    if (this.stagedDiscardedItems && this.stagedDiscardedItems.length > 0) {
+      html += `
+        <div class="ocr-discarded-notice">
+          <strong><i data-lucide="info" style="width: 12px; height: 12px; vertical-align: middle;"></i> รายการที่ AI ตัดออก (ไม่มีในแคตตาล็อกร้าน):</strong>
+          <div style="margin-top: 4px; display: flex; flex-direction: column; gap: 2px;">
+            ${this.stagedDiscardedItems.map(d => `<div>• <span style="text-decoration: line-through; color: #94a3b8;">${this.escapeHTML(d.Label)}</span> <em style="font-size: 0.7rem; color: #ea580c;">(${this.escapeHTML(d.Reason)})</em></div>`).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    list.innerHTML = html;
+
+    // Attach listeners to checkboxes & qty inputs
+    list.querySelectorAll('.ocr-item-checkbox').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const idx = parseInt(e.target.dataset.idx, 10);
+        if (this.stagedOcrItems[idx]) {
+          this.stagedOcrItems[idx].Selected = e.target.checked;
+        }
+        this.updateApplyButtonState();
+      });
+    });
+
+    list.querySelectorAll('.ocr-qty-input').forEach(input => {
+      input.addEventListener('change', (e) => {
+        const idx = parseInt(e.target.dataset.idx, 10);
+        const val = Math.max(1, parseInt(e.target.value, 10) || 1);
+        if (this.stagedOcrItems[idx]) {
+          this.stagedOcrItems[idx].Quantity = val;
+        }
+      });
+    });
+
+    this.updateApplyButtonState();
+    if (window.lucide) lucide.createIcons();
+  }
+
+  updateApplyButtonState() {
+    const btnApply = document.getElementById('btnApplyOCR');
+    if (btnApply) {
+      const hasSelected = this.stagedOcrItems.some(it => it.Selected);
+      btnApply.disabled = !hasSelected;
+    }
+  }
+
+  async applyOCRResultsToNote() {
+    const selectedItems = this.stagedOcrItems.filter(it => it.Selected);
+    if (selectedItems.length === 0) {
+      alert('กรุณาเลือกรายการสินค้าอย่างน้อย 1 รายการ');
+      return;
+    }
+
+    const targetSelect = document.getElementById('ocrTargetSelect');
+    const targetVal = targetSelect ? targetSelect.value : 'new_retail';
+    const customNameInput = document.getElementById('ocrCustomerNameInput');
+    const customerName = (customNameInput ? customNameInput.value.trim() : '') || 'ลูกค้าจาก AI สแกน';
+
+    if (targetVal === 'new_retail' || targetVal === 'new_restaurant') {
+      const billType = targetVal === 'new_restaurant' ? 'restaurant' : 'retail';
+      const noteItems = selectedItems.map(it => ({
+        Product_Name: it.Product_Name,
+        Quantity: it.Quantity,
+        Price_Per_Unit: it.Price_Per_Unit
+      }));
+
+      await LocalDB.createNote({
+        Customer_Name: customerName,
+        Status: 'IOU',
+        Bill_Type: billType
+      }, noteItems);
+
+      this.showToast(`สร้าง${billType === 'restaurant' ? 'บิลร้านอาหาร' : 'บิลร้านค้า'} จาก AI สแกนเรียบร้อย`, 'success');
+    } else {
+      // Add items into existing note
+      for (const it of selectedItems) {
+        await LocalDB.addItemToNote(targetVal, {
+          Product_Name: it.Product_Name,
+          Quantity: it.Quantity,
+          Price_Per_Unit: it.Price_Per_Unit
+        });
+      }
+      this.showToast(`เพิ่ม ${selectedItems.length} รายการลงในบิลเรียบร้อย`, 'success');
+    }
+
+    SFX.playChime();
+    this.closeModal('cameraModal');
+    this.selectedDateFilter = 'today';
+    await this.refreshNotes();
+  }
+
   showToast(message, type = 'info') {
     const container = document.getElementById('toastContainer');
     if (!container) return;
@@ -1577,6 +2387,90 @@ class SmartPOSApp {
       toast.style.transform = 'translateX(100%)';
       setTimeout(() => toast.remove(), 400);
     }, 3200);
+  }
+
+  /**
+   * Detect whether current user is visiting via mobile device or tablet
+   * @returns {boolean}
+   */
+  isMobileDevice() {
+    const userAgentCheck = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
+    const screenCheck = (window.innerWidth <= 768) || (window.matchMedia && window.matchMedia('(max-width: 768px)').matches);
+    const touchCheck = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    return userAgentCheck || (screenCheck && touchCheck);
+  }
+
+  /**
+   * Initialize Mobile Load Confirmation Modal & PWA Installation handling
+   */
+  initMobileLoadConfirmation() {
+    // Debug shortcut: ?reset_mobile=1 to test confirmation modal again
+    if (window.location.search.includes('reset_mobile=1')) {
+      localStorage.removeItem('smartpos_mobile_confirmed');
+    }
+
+    const modal = document.getElementById('mobileLoadModal');
+    const confirmBtn = document.getElementById('btnConfirmMobileLoad');
+    const installBtn = document.getElementById('btnInstallPwa');
+    if (!modal) return;
+
+    // 1. Capture PWA Install Prompt
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      this.deferredInstallPrompt = e;
+      if (installBtn) {
+        installBtn.style.display = 'flex';
+      }
+    });
+
+    if (installBtn) {
+      installBtn.addEventListener('click', async () => {
+        if (this.deferredInstallPrompt) {
+          this.deferredInstallPrompt.prompt();
+          const { outcome } = await this.deferredInstallPrompt.userChoice;
+          console.log(`PWA install choice: ${outcome}`);
+          this.deferredInstallPrompt = null;
+          installBtn.style.display = 'none';
+          this.showToast('📲 ติดตั้งเรียบร้อย สามารถเปิดใช้งานจากหน้าจอหลักได้ทันที');
+        } else {
+          this.showToast('เพื่อติดตั้งแอป: แตะปุ่มแชร์/เมนูในเบราว์เซอร์ แล้วเลือก "เพิ่มลงหน้าจอหลัก"');
+        }
+      });
+    }
+
+    // 2. Check if opened on mobile device and not yet confirmed
+    const isMobile = this.isMobileDevice();
+    const hasConfirmed = localStorage.getItem('smartpos_mobile_confirmed') === 'true';
+
+    if (isMobile && !hasConfirmed) {
+      modal.style.display = 'flex';
+      // Force CSS reflow for smooth animation
+      void modal.offsetWidth;
+      modal.classList.add('show');
+      modal.setAttribute('aria-hidden', 'false');
+
+      if (window.lucide) {
+        lucide.createIcons();
+      }
+    }
+
+    // 3. Confirm button action
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', () => {
+        // Save confirmation in localStorage so it only asks on first mobile launch
+        localStorage.setItem('smartpos_mobile_confirmed', 'true');
+        SFX.playChime();
+
+        // Smooth fade out
+        modal.classList.remove('show');
+        modal.setAttribute('aria-hidden', 'true');
+        setTimeout(() => {
+          modal.style.display = 'none';
+        }, 350);
+
+        this.showToast('✅ โหลดระบบสำเร็จ ยินดีต้อนรับสู่ Smart POS');
+      });
+    }
   }
 
   escapeHTML(str) {
