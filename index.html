@@ -103,22 +103,122 @@
         </div>
       </div>
 
-      <!-- Quick Metrics Bar -->
-      <div class="metrics-bar">
-        <div class="metric-item">
-          <span class="metric-label"><i data-lucide="clock-alert"></i> ยอดค้างชำระ (เซ็นไว้):</span>
-          <span class="metric-value value-iou" id="totalOutstandingAmount">฿0.00</span>
-        </div>
-        <div class="metric-divider"></div>
-        <div class="metric-item">
-          <span class="metric-label"><i data-lucide="check-circle-2"></i> ยอดรับชำระแล้ว:</span>
-          <span class="metric-value value-paid" id="totalPaidAmount">฿0.00</span>
-        </div>
-        <div class="metric-divider"></div>
-        <div class="metric-item">
-          <span class="metric-label"><i data-lucide="database"></i> โหมดจัดเก็บ:</span>
-          <span class="metric-badge offline-badge"><i data-lucide="hard-drive"></i> Offline IndexedDB (Snapshot
-            Locked)</span>
+      <!-- Quick Metrics Bar (Infinite Smooth Marquee Ticker with Interactive Touch/Drag & 5s Auto-Resume) -->
+      <div class="metrics-bar" id="metricsBar">
+        <div class="metrics-track" id="metricsTrack">
+          <!-- Group 1 (Primary) -->
+          <div class="metrics-group">
+            <div class="metric-item">
+              <span class="metric-label"><i data-lucide="clock-alert"></i> ยอดค้างชำระ (เซ็นไว้):</span>
+              <span class="metric-value value-iou metric-total-iou" id="totalOutstandingAmount">฿0.00</span>
+            </div>
+            <div class="metric-divider"></div>
+            <div class="metric-item">
+              <span class="metric-label"><i data-lucide="check-circle-2"></i> ยอดรับชำระแล้ว:</span>
+              <span class="metric-value value-paid metric-total-paid" id="totalPaidAmount">฿0.00</span>
+            </div>
+            <div class="metric-divider"></div>
+            <div class="metric-item">
+              <span class="metric-label"><i data-lucide="database"></i> โหมดจัดเก็บ:</span>
+              <span class="metric-badge offline-badge"><i data-lucide="hard-drive"></i> Offline IndexedDB (Snapshot Locked)</span>
+            </div>
+            <div class="metric-divider"></div>
+          </div>
+
+          <!-- Group 2 (Clone 1 for seamless infinite loop) -->
+          <div class="metrics-group" aria-hidden="true">
+            <div class="metric-item">
+              <span class="metric-label"><i data-lucide="clock-alert"></i> ยอดค้างชำระ (เซ็นไว้):</span>
+              <span class="metric-value value-iou metric-total-iou">฿0.00</span>
+            </div>
+            <div class="metric-divider"></div>
+            <div class="metric-item">
+              <span class="metric-label"><i data-lucide="check-circle-2"></i> ยอดรับชำระแล้ว:</span>
+              <span class="metric-value value-paid metric-total-paid">฿0.00</span>
+            </div>
+            <div class="metric-divider"></div>
+            <div class="metric-item">
+              <span class="metric-label"><i data-lucide="database"></i> โหมดจัดเก็บ:</span>
+              <span class="metric-badge offline-badge"><i data-lucide="hard-drive"></i> Offline IndexedDB (Snapshot Locked)</span>
+            </div>
+            <div class="metric-divider"></div>
+          </div>
+
+          <!-- Group 3 (Clone 2 for large screens) -->
+          <div class="metrics-group" aria-hidden="true">
+            <div class="metric-item">
+              <span class="metric-label"><i data-lucide="clock-alert"></i> ยอดค้างชำระ (เซ็นไว้):</span>
+              <span class="metric-value value-iou metric-total-iou">฿0.00</span>
+            </div>
+            <div class="metric-divider"></div>
+            <div class="metric-item">
+              <span class="metric-label"><i data-lucide="check-circle-2"></i> ยอดรับชำระแล้ว:</span>
+              <span class="metric-value value-paid metric-total-paid">฿0.00</span>
+            </div>
+            <div class="metric-divider"></div>
+            <div class="metric-item">
+              <span class="metric-label"><i data-lucide="database"></i> โหมดจัดเก็บ:</span>
+              <span class="metric-badge offline-badge"><i data-lucide="hard-drive"></i> Offline IndexedDB (Snapshot Locked)</span>
+            </div>
+            <div class="metric-divider"></div>
+          </div>
+
+          <!-- Group 4 (Clone 3 for ultra-wide displays) -->
+          <div class="metrics-group" aria-hidden="true">
+            <div class="metric-item">
+              <span class="metric-label"><i data-lucide="clock-alert"></i> ยอดค้างชำระ (เซ็นไว้):</span>
+              <span class="metric-value value-iou metric-total-iou">฿0.00</span>
+            </div>
+            <div class="metric-divider"></div>
+            <div class="metric-item">
+              <span class="metric-label"><i data-lucide="check-circle-2"></i> ยอดรับชำระแล้ว:</span>
+              <span class="metric-value value-paid metric-total-paid">฿0.00</span>
+            </div>
+            <div class="metric-divider"></div>
+            <div class="metric-item">
+              <span class="metric-label"><i data-lucide="database"></i> โหมดจัดเก็บ:</span>
+              <span class="metric-badge offline-badge"><i data-lucide="hard-drive"></i> Offline IndexedDB (Snapshot Locked)</span>
+            </div>
+            <div class="metric-divider"></div>
+          </div>
+
+          <!-- Group 5 (Clone 4) -->
+          <div class="metrics-group" aria-hidden="true">
+            <div class="metric-item">
+              <span class="metric-label"><i data-lucide="clock-alert"></i> ยอดค้างชำระ (เซ็นไว้):</span>
+              <span class="metric-value value-iou metric-total-iou">฿0.00</span>
+            </div>
+            <div class="metric-divider"></div>
+            <div class="metric-item">
+              <span class="metric-label"><i data-lucide="check-circle-2"></i> ยอดรับชำระแล้ว:</span>
+              <span class="metric-value value-paid metric-total-paid">฿0.00</span>
+            </div>
+            <div class="metric-divider"></div>
+            <div class="metric-item">
+              <span class="metric-label"><i data-lucide="database"></i> โหมดจัดเก็บ:</span>
+              <span class="metric-badge offline-badge"><i data-lucide="hard-drive"></i> Offline IndexedDB (Snapshot Locked)</span>
+            </div>
+            <div class="metric-divider"></div>
+          </div>
+
+          <!-- Group 6 (Clone 5) -->
+          <div class="metrics-group" aria-hidden="true">
+            <div class="metric-item">
+              <span class="metric-label"><i data-lucide="clock-alert"></i> ยอดค้างชำระ (เซ็นไว้):</span>
+              <span class="metric-value value-iou metric-total-iou">฿0.00</span>
+            </div>
+            <div class="metric-divider"></div>
+            <div class="metric-item">
+              <span class="metric-label"><i data-lucide="check-circle-2"></i> ยอดรับชำระแล้ว:</span>
+              <span class="metric-value value-paid metric-total-paid">฿0.00</span>
+            </div>
+            <div class="metric-divider"></div>
+            <div class="metric-item">
+              <span class="metric-label"><i data-lucide="database"></i> โหมดจัดเก็บ:</span>
+              <span class="metric-badge offline-badge"><i data-lucide="hard-drive"></i> Offline IndexedDB (Snapshot Locked)</span>
+            </div>
+            <div class="metric-divider"></div>
+          </div>
         </div>
       </div>
     </header>
@@ -129,7 +229,7 @@
     <!-- Main Content Area: Smart Note Grid -->
     <main class="main-viewport">
 
-      <!-- Date-Based Archiving Navigation Bar -->
+      <!-- Date Navigation & Filter Section -->
       <section class="date-archive-section">
         <div class="date-archive-header">
           <div class="active-date-info">
@@ -139,32 +239,53 @@
             </span>
             <span class="date-count-tag" id="activeDateCountTag">0 บิล</span>
           </div>
+        </div>
 
-          <div class="date-archive-controls">
-            <!-- Button to open/close past date accordion drawer -->
-            <button id="btnToggleArchive" class="btn-archive-toggle" title="เปิด/ปิดคลังประวัติบิลย้อนหลัง">
-              <i data-lucide="archive"></i>
-              <span>คลังประวัติย้อนหลัง (<span id="archiveDateCount">0</span> วัน)</span>
-              <i data-lucide="chevron-down" id="archiveChevronIcon"></i>
+        <!-- Date Filter Buttons Layout (Row 1: บิลทั้งหมด, Row 2: บิลวันนี้ + บิลวันอื่นๆ พร้อม Popup) -->
+        <div class="date-nav-controls">
+          <!-- Row 1 (กรอบสีแดง): บิลทั้งหมด (เรียงล่าสุด -> เก่าสุด) -->
+          <div class="date-nav-row-all">
+            <button type="button" id="btnFilterAllNotes" class="btn-date-nav btn-nav-all" title="แสดงบิลทั้งหมด เรียงลำดับจากล่าสุดไปหาเก่าสุด">
+              <i data-lucide="layers"></i>
+              <span class="btn-nav-label">บิลทั้งหมด</span>
+              <span class="btn-nav-badge" id="badgeAllNotesCount">0</span>
             </button>
           </div>
-        </div>
 
-        <!-- Date Blocks Quick Selector (Horizontal Scroll) -->
-        <div class="date-blocks-container" id="dateBlocksContainer">
-          <div class="date-blocks-scroll" id="dateBlocksScroll">
-            <!-- Dynamic Date Blocks injected via app.js -->
-          </div>
-        </div>
+          <!-- Row 2: บิลวันนี้ (กรอบสีเหลือง) + บิลวันอื่นๆ (กรอบสีเขียว พร้อม Popup) -->
+          <div class="date-nav-row-split">
+            <!-- Yellow Slot: บิลวันนี้ (แสดงแค่วันนี้เท่านั้น) -->
+            <button type="button" id="btnFilterTodayNotes" class="btn-date-nav btn-nav-today active" title="แสดงเฉพาะบิลของวันนี้เท่านั้น">
+              <i data-lucide="sparkles"></i>
+              <span class="btn-nav-label">บิลวันนี้</span>
+              <span class="btn-nav-badge" id="badgeTodayNotesCount">0</span>
+            </button>
 
-        <!-- Collapsible History Archive Accordion / Drawer -->
-        <div id="historyArchiveDrawer" class="history-archive-drawer" style="display: none;">
-          <div class="archive-drawer-header">
-            <h4><i data-lucide="history"></i> คลังประวัติบิลแยกตามวัน (Daily Archive Blocks)</h4>
-            <span class="archive-hint">คลิกเลือกวันที่ต้องการเพื่อเปิดดูบิลย้อนหลัง บิลเก่าจะไม่ปะปนกับบิลวันนี้</span>
-          </div>
-          <div class="archive-cards-grid" id="archiveCardsGrid">
-            <!-- Dynamic Daily Archive Cards injected here -->
+            <!-- Green Slot: บิลวันอื่นๆ (แสดง Popup รายการวันที่ที่มีบิลบันทึกไว้) -->
+            <div class="other-dates-wrapper" id="otherDatesWrapper">
+              <button type="button" id="btnFilterOtherDates" class="btn-date-nav btn-nav-other" title="เลือกดูบิลของวันอื่นๆ" aria-haspopup="dialog" aria-expanded="false">
+                <i data-lucide="calendar"></i>
+                <span class="btn-nav-label" id="labelOtherDates">บิลวันอื่นๆ</span>
+                <span class="btn-nav-badge" id="badgeOtherDatesCount">0</span>
+                <i data-lucide="chevron-down" class="btn-nav-chevron" id="chevronOtherDates"></i>
+              </button>
+
+              <!-- Small Popup with List of Recorded Dates -->
+              <div id="otherDatesPopup" class="other-dates-popup" style="display: none;" role="dialog" aria-label="เลือกวันที่บันทึกไว้">
+                <div class="other-dates-popup-header">
+                  <div class="popup-title">
+                    <i data-lucide="calendar-search"></i>
+                    <span>เลือกวันที่ที่มีบิล</span>
+                  </div>
+                  <button type="button" id="btnCloseOtherDatesPopup" class="popup-close-btn" aria-label="ปิด">
+                    <i data-lucide="x"></i>
+                  </button>
+                </div>
+                <div class="other-dates-popup-body" id="otherDatesPopupList">
+                  <!-- Dynamic dates injected via JS -->
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>

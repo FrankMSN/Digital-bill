@@ -1618,6 +1618,12 @@ class SmartPOSApp {
   }
 
   bindEvents() {
+    // 0. Dynamic Invisible & Faint Shadow Scrollbar
+    this.initDynamicScrollbar();
+
+    // 0.1 Infinite Smooth Marquee Ticker for Metrics Bar
+    this.initMetricsMarquee();
+
     // 1. Search Box Input
     const searchInput = document.getElementById('customerSearchInput');
     const clearSearchBtn = document.getElementById('clearSearchBtn');
@@ -1988,18 +1994,68 @@ class SmartPOSApp {
       });
     }
 
-    // 9. Toggle History Archive Drawer button
-    const btnToggleArchive = document.getElementById('btnToggleArchive');
-    if (btnToggleArchive) {
-      btnToggleArchive.addEventListener('click', () => {
-        this.isArchiveOpen = !this.isArchiveOpen;
-        const drawer = document.getElementById('historyArchiveDrawer');
-        const chevron = document.getElementById('archiveChevronIcon');
-        if (drawer) drawer.style.display = this.isArchiveOpen ? 'block' : 'none';
-        if (chevron) chevron.style.transform = this.isArchiveOpen ? 'rotate(180deg)' : 'rotate(0deg)';
-        SFX.playPop();
+    // 9. Date Navigation Controls (All Bills / Today / Other Dates with Popup)
+    const btnAllNotes = document.getElementById('btnFilterAllNotes');
+    if (btnAllNotes) {
+      btnAllNotes.addEventListener('click', () => {
+        this.selectedDateFilter = 'all';
+        // เมื่อกดจะแสดงบิลทั้งหมดโดยเรียงจากล่าสุดไปหาเก่าสุด
+        this.sortDescending = true;
+        this.notesList.sort((a, b) => new Date(b.Created_Date) - new Date(a.Created_Date));
+        const btnSort = document.getElementById('btnSortNotes');
+        if (btnSort) {
+          btnSort.innerHTML = '<i data-lucide="arrow-down-wide-narrow"></i> ล่าสุดก่อน';
+        }
+        if (typeof SFX !== 'undefined' && SFX.playPop) SFX.playPop();
+        this.closeOtherDatesPopup();
+        this.renderDateNav();
+        this.updateMetrics();
+        this.filterAndRenderNotes();
       });
     }
+
+    const btnTodayNotes = document.getElementById('btnFilterTodayNotes');
+    if (btnTodayNotes) {
+      btnTodayNotes.addEventListener('click', () => {
+        this.selectedDateFilter = 'today';
+        if (typeof SFX !== 'undefined' && SFX.playPop) SFX.playPop();
+        this.closeOtherDatesPopup();
+        this.renderDateNav();
+        this.updateMetrics();
+        this.filterAndRenderNotes();
+      });
+    }
+
+    const btnOtherDates = document.getElementById('btnFilterOtherDates');
+    if (btnOtherDates) {
+      btnOtherDates.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.toggleOtherDatesPopup();
+      });
+    }
+
+    const btnCloseOtherPopup = document.getElementById('btnCloseOtherDatesPopup');
+    if (btnCloseOtherPopup) {
+      btnCloseOtherPopup.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.closeOtherDatesPopup();
+      });
+    }
+
+    // Close other dates popup on click outside
+    document.addEventListener('click', (e) => {
+      const wrapper = document.getElementById('otherDatesWrapper');
+      if (wrapper && !wrapper.contains(e.target)) {
+        this.closeOtherDatesPopup();
+      }
+    });
+
+    // Close other dates popup on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        this.closeOtherDatesPopup();
+      }
+    });
 
     // 10. Google Sheets background service is active silently (No UI modal required)
   }
@@ -2062,148 +2118,156 @@ class SmartPOSApp {
     datalist.innerHTML = uniqueNames.map(name => `<option value="${this.escapeHTML(name)}"></option>`).join('');
   }
 
-  /* ---------------- Date-Based Archiving (Daily Blocks) ---------------- */
+  /* ---------------- Date Navigation & Filtering (All / Today / Other Dates) ---------------- */
 
-  renderDateBlocks() {
-    const scrollContainer = document.getElementById('dateBlocksScroll');
-    const countTag = document.getElementById('activeDateCountTag');
-    const activeLabel = document.getElementById('activeDateLabel');
-    const archiveCountEl = document.getElementById('archiveDateCount');
-    const titleEl = document.getElementById('gridDisplayTitle');
-    const hintEl = document.getElementById('gridDisplayHint');
-    if (!scrollContainer) return;
+  toggleOtherDatesPopup() {
+    const popup = document.getElementById('otherDatesPopup');
+    const btn = document.getElementById('btnFilterOtherDates');
+    if (!popup) return;
 
-    const todayKey = getTodayDateKey();
-    const todayNotes = this.dateBlocks[todayKey] || [];
-    const totalAllNotes = this.notesList.length;
-
-    // Past date keys sorted descending
-    const allDateKeys = Object.keys(this.dateBlocks).sort((a, b) => b.localeCompare(a));
-    const pastDateKeys = allDateKeys.filter(k => k !== todayKey);
-
-    if (archiveCountEl) archiveCountEl.textContent = pastDateKeys.length;
-
-    let html = '';
-
-    // 1. Today Block Button
-    const isTodayActive = this.selectedDateFilter === 'today';
-    html += `
-      <button class="date-block-btn ${isTodayActive ? 'active' : ''}" data-date="today">
-        <i data-lucide="sparkles"></i>
-        <span>บิลวันนี้ (Today)</span>
-        <span class="date-block-badge">${todayNotes.length}</span>
-      </button>
-    `;
-
-    // 2. Past Date Blocks
-    pastDateKeys.forEach(dateKey => {
-      const count = (this.dateBlocks[dateKey] || []).length;
-      const isDateActive = this.selectedDateFilter === dateKey;
-      const label = formatThaiDateDisplay(dateKey);
-      html += `
-        <button class="date-block-btn ${isDateActive ? 'active' : ''}" data-date="${dateKey}">
-          <i data-lucide="calendar"></i>
-          <span>${label}</span>
-          <span class="date-block-badge">${count}</span>
-        </button>
-      `;
-    });
-
-    // 3. All Time Block
-    const isAllActive = this.selectedDateFilter === 'all';
-    html += `
-      <button class="date-block-btn ${isAllActive ? 'active' : ''}" data-date="all">
-        <i data-lucide="layers"></i>
-        <span>รวมทุกวัน (All)</span>
-        <span class="date-block-badge">${totalAllNotes}</span>
-      </button>
-    `;
-
-    scrollContainer.innerHTML = html;
-
-    // Attach click listeners to date blocks
-    scrollContainer.querySelectorAll('.date-block-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        this.selectedDateFilter = btn.dataset.date;
-        SFX.playPop();
-        this.renderDateBlocks();
-        this.renderHistoryArchiveDrawer();
-        this.updateMetrics();
-        this.filterAndRenderNotes();
-      });
-    });
-
-    // Update active label and hints
-    if (this.selectedDateFilter === 'today') {
-      if (activeLabel) activeLabel.innerHTML = `บิลวันนี้ (${formatThaiDateDisplay(todayKey)})`;
-      if (countTag) countTag.textContent = `${todayNotes.length} บิล`;
-      if (titleEl) titleEl.textContent = 'บิลร้านค้าประจำวัน (วันนี้)';
-      if (hintEl) hintEl.textContent = 'แสดงเฉพาะบิลของวันนี้ บิลของวันก่อนหน้าจะถูกจัดเก็บเข้าคลังประวัติอัตโนมัติ';
-    } else if (this.selectedDateFilter === 'all') {
-      if (activeLabel) activeLabel.innerHTML = `คลังรวมทุกวัน (All Dates)`;
-      if (countTag) countTag.textContent = `${totalAllNotes} บิล`;
-      if (titleEl) titleEl.textContent = 'ประวัติบิลทั้งหมด (ทุกวัน)';
-      if (hintEl) hintEl.textContent = 'กำลังแสดงบิลทั้งหมดที่บันทึกไว้ในเครื่อง';
+    const isVisible = popup.style.display === 'block';
+    if (isVisible) {
+      this.closeOtherDatesPopup();
     } else {
-      const pastNotes = this.dateBlocks[this.selectedDateFilter] || [];
-      const pastLabel = formatThaiDateDisplay(this.selectedDateFilter);
-      if (activeLabel) activeLabel.innerHTML = `ประวัติบิล: ${pastLabel}`;
-      if (countTag) countTag.textContent = `${pastNotes.length} บิล`;
-      if (titleEl) titleEl.textContent = `ประวัติบิลประจำวันที่ ${pastLabel}`;
-      if (hintEl) hintEl.textContent = `กำลังดูบิลย้อนหลังของวันที่ ${pastLabel} • คลิก "บิลวันนี้" เพื่อกลับสู่หน้าร้านปัจจุบัน`;
+      this.renderOtherDatesPopupList();
+      popup.style.display = 'block';
+      if (btn) {
+        btn.classList.add('popup-open');
+        btn.setAttribute('aria-expanded', 'true');
+      }
+      if (typeof SFX !== 'undefined' && SFX.playPop) SFX.playPop();
+      if (window.lucide) lucide.createIcons();
     }
-
-    if (window.lucide) lucide.createIcons();
   }
 
-  renderHistoryArchiveDrawer() {
-    const grid = document.getElementById('archiveCardsGrid');
-    if (!grid) return;
+  closeOtherDatesPopup() {
+    const popup = document.getElementById('otherDatesPopup');
+    const btn = document.getElementById('btnFilterOtherDates');
+    if (popup) popup.style.display = 'none';
+    if (btn) {
+      btn.classList.remove('popup-open');
+      btn.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  renderOtherDatesPopupList() {
+    const listContainer = document.getElementById('otherDatesPopupList');
+    if (!listContainer) return;
 
     const todayKey = getTodayDateKey();
     const allDateKeys = Object.keys(this.dateBlocks).sort((a, b) => b.localeCompare(a));
     const pastDateKeys = allDateKeys.filter(k => k !== todayKey);
 
     if (pastDateKeys.length === 0) {
-      grid.innerHTML = `<p style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 12px; font-size: 0.85rem;">ยังไม่มีประวัติบิลของวันก่อนหน้า (เมื่อข้ามวัน ระบบจะจัดเก็บบิลเข้าคลังประวัตินี้อัตโนมัติ)</p>`;
+      listContainer.innerHTML = `
+        <div class="popup-empty-dates">
+          <i data-lucide="calendar-x-2"></i>
+          <span>ยังไม่มีบิลของวันอื่น</span>
+          <small>เมื่อมีบิลของวันก่อนหน้า จะแสดงรายการที่นี่</small>
+        </div>
+      `;
+      if (window.lucide) lucide.createIcons();
       return;
     }
 
-    grid.innerHTML = pastDateKeys.map(dateKey => {
+    listContainer.innerHTML = pastDateKeys.map(dateKey => {
       const notes = this.dateBlocks[dateKey] || [];
-      let sales = 0;
-      let iou = 0;
-      notes.forEach(n => {
-        if (n.Status === 'IOU') iou += n.Total_Amount;
-        else sales += n.Total_Amount;
-      });
-      const isActive = this.selectedDateFilter === dateKey;
+      const isSelected = this.selectedDateFilter === dateKey;
       const label = formatThaiDateDisplay(dateKey);
-
       return `
-        <div class="archive-day-card ${isActive ? 'active' : ''}" data-date="${dateKey}" title="คลิกเพื่อดูกลุ่มบิลของวันที่ ${label}">
-          <div class="archive-card-top">
-            <span class="archive-date-title"><i data-lucide="calendar"></i> ${label}</span>
-            <span class="archive-bill-count">${notes.length} บิล</span>
+        <button type="button" class="other-date-item ${isSelected ? 'selected' : ''}" data-date="${dateKey}" title="เปิดดูบิลของวันที่ ${label}">
+          <div class="other-date-item-main">
+            <i data-lucide="calendar"></i>
+            <span class="other-date-item-text">${label}</span>
           </div>
-          <div class="archive-card-stats">
-            <span class="archive-stat-item">รับแล้ว: <strong style="color: var(--paid-accent);">฿${sales.toFixed(2)}</strong></span>
-            <span class="archive-stat-item">เซ็นไว้: <strong style="color: var(--iou-accent);">฿${iou.toFixed(2)}</strong></span>
-          </div>
-        </div>
+          <span class="other-date-item-badge">${notes.length} บิล</span>
+        </button>
       `;
     }).join('');
 
-    grid.querySelectorAll('.archive-day-card').forEach(card => {
-      card.addEventListener('click', () => {
-        this.selectedDateFilter = card.dataset.date;
-        SFX.playPop();
-        this.renderDateBlocks();
-        this.renderHistoryArchiveDrawer();
+    listContainer.querySelectorAll('.other-date-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.selectedDateFilter = item.dataset.date;
+        if (typeof SFX !== 'undefined' && SFX.playPop) SFX.playPop();
+        this.closeOtherDatesPopup();
+        this.renderDateNav();
         this.updateMetrics();
         this.filterAndRenderNotes();
       });
     });
+
+    if (window.lucide) lucide.createIcons();
+  }
+
+  renderDateBlocks() {
+    this.renderDateNav();
+  }
+
+  renderDateNav() {
+    const countTag = document.getElementById('activeDateCountTag');
+    const activeLabel = document.getElementById('activeDateLabel');
+    const titleEl = document.getElementById('gridDisplayTitle');
+    const hintEl = document.getElementById('gridDisplayHint');
+
+    const btnAll = document.getElementById('btnFilterAllNotes');
+    const btnToday = document.getElementById('btnFilterTodayNotes');
+    const btnOther = document.getElementById('btnFilterOtherDates');
+    const labelOther = document.getElementById('labelOtherDates');
+
+    const badgeAll = document.getElementById('badgeAllNotesCount');
+    const badgeToday = document.getElementById('badgeTodayNotesCount');
+    const badgeOther = document.getElementById('badgeOtherDatesCount');
+
+    const todayKey = getTodayDateKey();
+    const todayNotes = this.dateBlocks[todayKey] || [];
+    const totalAllNotes = this.notesList.length;
+
+    const allDateKeys = Object.keys(this.dateBlocks).sort((a, b) => b.localeCompare(a));
+    const pastDateKeys = allDateKeys.filter(k => k !== todayKey);
+
+    // Update counts on badges
+    if (badgeAll) badgeAll.textContent = totalAllNotes;
+    if (badgeToday) badgeToday.textContent = todayNotes.length;
+    if (badgeOther) badgeOther.textContent = pastDateKeys.length;
+
+    const isAllActive = this.selectedDateFilter === 'all';
+    const isTodayActive = this.selectedDateFilter === 'today';
+    const isOtherActive = !isAllActive && !isTodayActive;
+
+    // Toggle active state classes on buttons
+    if (btnAll) btnAll.classList.toggle('active', isAllActive);
+    if (btnToday) btnToday.classList.toggle('active', isTodayActive);
+    if (btnOther) btnOther.classList.toggle('active', isOtherActive);
+
+    // Update other dates label text
+    if (labelOther) {
+      if (isOtherActive) {
+        labelOther.textContent = `${formatThaiDateDisplay(this.selectedDateFilter)}`;
+      } else {
+        labelOther.textContent = 'บิลวันอื่นๆ';
+      }
+    }
+
+    // Update top active label and section hint
+    if (isTodayActive) {
+      if (activeLabel) activeLabel.innerHTML = `บิลวันนี้ (${formatThaiDateDisplay(todayKey)})`;
+      if (countTag) countTag.textContent = `${todayNotes.length} บิล`;
+      if (titleEl) titleEl.textContent = 'บิลร้านค้าประจำวัน (วันนี้)';
+      if (hintEl) hintEl.textContent = 'แสดงเฉพาะบิลของวันนี้เท่านั้น';
+    } else if (isAllActive) {
+      if (activeLabel) activeLabel.innerHTML = `บิลทั้งหมด (ทุกวัน)`;
+      if (countTag) countTag.textContent = `${totalAllNotes} บิล`;
+      if (titleEl) titleEl.textContent = 'บิลทั้งหมด (เรียงล่าสุดไปหาเก่าสุด)';
+      if (hintEl) hintEl.textContent = 'กำลังแสดงบิลทั้งหมดที่บันทึกไว้ในเครื่อง เรียงลำดับจากล่าสุดไปหาเก่าสุด';
+    } else {
+      const pastNotes = this.dateBlocks[this.selectedDateFilter] || [];
+      const pastLabel = formatThaiDateDisplay(this.selectedDateFilter);
+      if (activeLabel) activeLabel.innerHTML = `ประวัติบิล: ${pastLabel}`;
+      if (countTag) countTag.textContent = `${pastNotes.length} บิล`;
+      if (titleEl) titleEl.textContent = `ประวัติบิลประจำวันที่ ${pastLabel}`;
+      if (hintEl) hintEl.textContent = `กำลังดูบิลย้อนหลังของวันที่ ${pastLabel} • คลิก "บิลวันนี้" หรือ "บิลทั้งหมด" เพื่อเปลี่ยนมุมมอง`;
+    }
 
     if (window.lucide) lucide.createIcons();
   }
@@ -2212,13 +2276,14 @@ class SmartPOSApp {
 
   async refreshNotes() {
     this.notesList = await LocalDB.getAllNotes();
-    if (!this.sortDescending) {
-      this.notesList.reverse();
+    if (this.selectedDateFilter === 'all' || this.sortDescending) {
+      this.notesList.sort((a, b) => new Date(b.Created_Date) - new Date(a.Created_Date));
+    } else {
+      this.notesList.sort((a, b) => new Date(a.Created_Date) - new Date(b.Created_Date));
     }
     await this.updateCustomerDatalist();
     this.dateBlocks = groupNotesByDate(this.notesList);
-    this.renderDateBlocks();
-    this.renderHistoryArchiveDrawer();
+    this.renderDateNav();
     this.updateMetrics();
     this.filterAndRenderNotes();
   }
@@ -2266,8 +2331,15 @@ class SmartPOSApp {
     const cntRetail = document.getElementById('countRetail');
     const cntRestaurant = document.getElementById('countRestaurant');
 
-    if (elIOU) elIOU.textContent = `฿${totalIOU.toFixed(2)}`;
-    if (elPaid) elPaid.textContent = `฿${totalPaid.toFixed(2)}`;
+    const formattedIOU = `฿${totalIOU.toFixed(2)}`;
+    const formattedPaid = `฿${totalPaid.toFixed(2)}`;
+
+    document.querySelectorAll('.metric-total-iou, #totalOutstandingAmount').forEach(el => {
+      el.textContent = formattedIOU;
+    });
+    document.querySelectorAll('.metric-total-paid, #totalPaidAmount').forEach(el => {
+      el.textContent = formattedPaid;
+    });
     if (cntAll) cntAll.textContent = activeNotes.length;
     if (cntIOU) cntIOU.textContent = countIOU;
     if (cntPaid) cntPaid.textContent = countPaid;
@@ -3440,6 +3512,242 @@ function createJsonResponse(data){ return ContentService.createTextOutput(JSON.s
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
+  }
+
+  /**
+   * Smooth Auto-Hiding Scrollbar Controller
+   * Keeps scrollbars invisible by default (ล่องหน)
+   * Reveals a faint, subtle ghost shadow (เงาลางๆ) on mouse wheel / scroll up and down
+   * Smoothly fades out when scrolling stops
+   */
+  initDynamicScrollbar() {
+    let scrollTimer = null;
+    const root = document.documentElement;
+    const body = document.body;
+
+    const onUserScrollActivity = (e) => {
+      if (!root.classList.contains('is-scrolling')) {
+        root.classList.add('is-scrolling');
+        if (body) body.classList.add('is-scrolling');
+      }
+
+      // If scrolling or wheeling inside a specific container, mark it too
+      let targetEl = e ? (e.target || null) : null;
+      if (targetEl && targetEl.nodeType === 1 && targetEl !== root && targetEl !== body) {
+        targetEl.classList.add('is-scrolling');
+        let parent = targetEl.parentElement;
+        while (parent && parent !== body && parent !== root) {
+          try {
+            const style = window.getComputedStyle(parent);
+            if (/(auto|scroll)/.test(style.overflowY || '') || /(auto|scroll)/.test(style.overflowX || '')) {
+              parent.classList.add('is-scrolling');
+            }
+          } catch (err) {}
+          parent = parent.parentElement;
+        }
+      }
+
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => {
+        root.classList.remove('is-scrolling');
+        if (body) body.classList.remove('is-scrolling');
+        document.querySelectorAll('.is-scrolling').forEach(el => el.classList.remove('is-scrolling'));
+      }, 950);
+    };
+
+    window.addEventListener('scroll', onUserScrollActivity, { passive: true });
+    document.addEventListener('scroll', onUserScrollActivity, { passive: true, capture: true });
+    window.addEventListener('wheel', onUserScrollActivity, { passive: true });
+    window.addEventListener('touchmove', onUserScrollActivity, { passive: true });
+  }
+
+  /**
+   * Infinite Smooth Marquee Ticker for Metrics Bar
+   * 1. Auto-scrolls continuously, slowly and smoothly (marquee ticker).
+   * 2. Supports finger touch / swipe on mobile & mouse drag on desktop.
+   * 3. Pauses immediately during touch / drag.
+   * 4. When touch / drag ends, stays paused for 5 seconds (5000ms).
+   * 5. Resumes auto-scrolling continuing from the exact position where it was stopped.
+   * 6. Infinite seamless loop with zero disappearing text (cloned groups wrapped seamlessly).
+   */
+  initMetricsMarquee() {
+    const bar = document.getElementById('metricsBar');
+    if (!bar) return;
+
+    let isInteracting = false;
+    let isPaused = false;
+    let resumeTimer = null;
+    let animFrameId = null;
+    let lastTime = performance.now();
+    let currentScrollPos = bar.scrollLeft || 0;
+    let hasInitPos = false;
+
+    // Slow, comfortable reading speed: 30px per second (~0.5px per frame at 60fps)
+    const SPEED_PX_PER_SEC = 30;
+    const RESUME_DELAY_MS = 5000; // 5 seconds pause after touch / drag
+
+    const getGroupWidth = () => {
+      const firstGroup = bar.querySelector('.metrics-group');
+      return firstGroup ? firstGroup.offsetWidth : 0;
+    };
+
+    // Helper to start or reset the 5-second countdown to resume auto-scrolling
+    const triggerResumeCountdown = () => {
+      clearTimeout(resumeTimer);
+      isPaused = true;
+      resumeTimer = setTimeout(() => {
+        isPaused = false;
+        // Keep currentScrollPos accurately synchronized with physical scrollLeft
+        currentScrollPos = bar.scrollLeft;
+      }, RESUME_DELAY_MS);
+    };
+
+    // 1. Touch Events for Mobile / Tablet
+    bar.addEventListener('touchstart', () => {
+      isInteracting = true;
+      isPaused = true;
+      clearTimeout(resumeTimer);
+    }, { passive: true });
+
+    bar.addEventListener('touchmove', () => {
+      isInteracting = true;
+      isPaused = true;
+      clearTimeout(resumeTimer);
+      currentScrollPos = bar.scrollLeft;
+    }, { passive: true });
+
+    bar.addEventListener('touchend', () => {
+      isInteracting = false;
+      currentScrollPos = bar.scrollLeft;
+      triggerResumeCountdown();
+    }, { passive: true });
+
+    bar.addEventListener('touchcancel', () => {
+      isInteracting = false;
+      currentScrollPos = bar.scrollLeft;
+      triggerResumeCountdown();
+    }, { passive: true });
+
+    // 2. Mouse Drag Events for Desktop
+    let isMouseDown = false;
+    let mouseStartX = 0;
+    let mouseStartScroll = 0;
+
+    bar.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return; // Left mouse button only
+      isMouseDown = true;
+      isInteracting = true;
+      isPaused = true;
+      clearTimeout(resumeTimer);
+      mouseStartX = e.clientX;
+      mouseStartScroll = bar.scrollLeft;
+      bar.classList.add('is-dragging');
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isMouseDown) return;
+      e.preventDefault();
+      const dx = e.clientX - mouseStartX;
+      let targetScroll = mouseStartScroll - dx;
+
+      const groupWidth = getGroupWidth();
+      if (groupWidth > 0) {
+        while (targetScroll >= groupWidth * 2) {
+          targetScroll -= groupWidth;
+          mouseStartScroll -= groupWidth;
+        }
+        while (targetScroll <= 5) {
+          targetScroll += groupWidth;
+          mouseStartScroll += groupWidth;
+        }
+      }
+
+      bar.scrollLeft = targetScroll;
+      currentScrollPos = targetScroll;
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isMouseDown) {
+        isMouseDown = false;
+        isInteracting = false;
+        bar.classList.remove('is-dragging');
+        currentScrollPos = bar.scrollLeft;
+        triggerResumeCountdown();
+      }
+    });
+
+    // 3. Wheel Events
+    bar.addEventListener('wheel', (e) => {
+      isInteracting = true;
+      isPaused = true;
+      clearTimeout(resumeTimer);
+      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      bar.scrollLeft += delta;
+      currentScrollPos = bar.scrollLeft;
+      triggerResumeCountdown();
+      setTimeout(() => {
+        isInteracting = false;
+      }, 150);
+    }, { passive: true });
+
+    // 4. Scroll Event (Supports touch inertia / momentum scrolling)
+    let momentumDebounce = null;
+    bar.addEventListener('scroll', () => {
+      const groupWidth = getGroupWidth();
+      if (groupWidth > 0) {
+        // Seamless bidirectional loop wrap
+        if (bar.scrollLeft >= groupWidth * 2) {
+          bar.scrollLeft -= groupWidth;
+        } else if (bar.scrollLeft <= 5) {
+          bar.scrollLeft += groupWidth;
+        }
+      }
+      currentScrollPos = bar.scrollLeft;
+
+      // When momentum scrolling continues after touchend, refresh 5-sec countdown from when it stops
+      if (!isMouseDown) {
+        clearTimeout(momentumDebounce);
+        momentumDebounce = setTimeout(() => {
+          if (!isInteracting) {
+            triggerResumeCountdown();
+          }
+        }, 120);
+      }
+    }, { passive: true });
+
+    // 5. Main Animation Loop (High-precision requestAnimationFrame)
+    const animate = (currentTime) => {
+      const delta = (currentTime - lastTime) / 1000;
+      lastTime = currentTime;
+
+      const groupWidth = getGroupWidth();
+
+      // Initialize starting position at groupWidth to allow backwards dragging immediately
+      if (groupWidth > 0 && !hasInitPos) {
+        bar.scrollLeft = groupWidth;
+        currentScrollPos = groupWidth;
+        hasInitPos = true;
+      }
+
+      if (!isInteracting && !isPaused && groupWidth > 0 && delta > 0 && delta < 0.2) {
+        currentScrollPos += SPEED_PX_PER_SEC * delta;
+
+        // Seamless wrap-around: when reaching groupWidth * 2, wrap back by groupWidth
+        // Content of Group 2 matches Group 3 exactly, so the visual position is 100% seamless!
+        if (currentScrollPos >= groupWidth * 2) {
+          currentScrollPos -= groupWidth;
+        }
+
+        bar.scrollLeft = currentScrollPos;
+      } else if (isInteracting) {
+        currentScrollPos = bar.scrollLeft;
+      }
+
+      animFrameId = requestAnimationFrame(animate);
+    };
+
+    lastTime = performance.now();
+    animFrameId = requestAnimationFrame(animate);
   }
 }
 
