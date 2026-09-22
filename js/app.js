@@ -1003,155 +1003,267 @@ class VisionOCRService {
 const VisionOCR = new VisionOCRService();
 
 /* ============================================================================
-   SECTION 5: PDF EXPORT SERVICE (html2pdf.js)
+   SECTION 5: BILL IMAGE EXPORT SERVICE (html2canvas Off-screen Rendering)
    ============================================================================ */
 class ExportService {
+  static escapeHTML(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   /**
-   * Generates a high-quality PDF bill from a specific note-card using element cloning.
-   * Directly appends the cloned card to document.body with fixed width & white background,
-   * avoiding scroll/viewport clipping and hidden container reflow issues.
+   * Generates a high-resolution PNG image bill from a specific note-card using off-screen rendering.
+   * Prevents UI distortion by rendering a clean, dedicated receipt element off-screen.
    *
    * @param {Object} note - The Smart Note data object
    * @param {HTMLElement} [cardElement] - Optional direct reference to the note-card DOM element
    */
-  static async exportNoteToPDF(note, cardElement) {
-    if (!window.html2pdf) {
-      alert('ระบบ PDF กำลังเริ่มต้น หรือยังไม่พร้อมใช้งาน กรุณาลองใหม่อีกครั้ง');
+  static async exportNoteToImage(note, cardElement) {
+    if (!window.html2canvas) {
+      alert('ระบบสร้างรูปภาพบิล (html2canvas) กำลังเริ่มต้น หรือยังไม่พร้อมใช้งาน กรุณาลองใหม่อีกครั้ง');
       return;
     }
 
-    // 1. Locate the source note-card element in the DOM
-    const sourceCard = cardElement || document.querySelector(`.note-card[data-id="${note.Note_ID}"]`);
-    if (!sourceCard) {
-      console.error('Note card element not found for export:', note.Note_ID);
-      return;
-    }
-
-    // Get current customer name from input if available, or fall back to note data
-    const currentNameInput = sourceCard.querySelector('.customer-name-input');
-    const customerName = (currentNameInput ? currentNameInput.value.trim() : '') || note.Customer_Name || 'ลูกค้าทั่วไป';
-    const safeCustomer = customerName.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'ลูกค้า';
-
-    // 2. Clone the specific note-card element
-    const clone = sourceCard.cloneNode(true);
-    clone.id = 'pdfExportClone';
-    clone.classList.add('pdf-export-clone');
-
-    // 3. Clean up non-printable and interactive elements inside the clone
-    // Remove action buttons row (Export PDF / Delete), quick-add item box, row remove buttons, and qty buttons
-    clone.querySelectorAll('.note-actions-row, .add-item-box, .col-actions, .qty-btn').forEach(el => el.remove());
-
-    // Remove empty action column header in table
-    const lastTh = clone.querySelector('.items-table thead tr th:last-child');
-    if (lastTh && !lastTh.textContent.trim()) {
-      lastTh.remove();
-    }
-
-    // Replace customer name input with clean static text div
-    const cloneNameInput = clone.querySelector('.customer-name-input');
-    if (cloneNameInput) {
-      const nameDiv = document.createElement('div');
-      nameDiv.className = 'customer-name-pdf-text';
-      nameDiv.textContent = customerName;
-      cloneNameInput.parentNode.replaceChild(nameDiv, cloneNameInput);
-    }
-
-    // Enhance table rows with unit prices if available
-    clone.querySelectorAll('.item-row').forEach(row => {
-      const itemId = row.getAttribute('data-item-id');
-      const item = (note.items || []).find(it => it.Item_ID === itemId);
-      if (item) {
-        const nameCol = row.querySelector('.col-name');
-        if (nameCol && !nameCol.querySelector('.item-unit-price-sub')) {
-          const priceSub = document.createElement('div');
-          priceSub.className = 'item-unit-price-sub';
-          priceSub.style.fontSize = '12px';
-          priceSub.style.color = '#64748b';
-          priceSub.style.fontWeight = 'normal';
-          priceSub.textContent = `@ ฿${item.Price_Per_Unit.toFixed(2)}`;
-          nameCol.appendChild(priceSub);
-        }
-      }
-    });
-
-    // Add receipt header banner at top of clone for official presentation
-    const headerEl = clone.querySelector('.note-header');
-    if (headerEl) {
-      const banner = document.createElement('div');
-      banner.className = 'pdf-receipt-banner';
-      banner.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 12px;">
-          <div>
-            <div style="font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.01em;">ใบเสร็จ / บิล Smart Note</div>
-            <div style="font-size: 12px; color: #475569; margin-top: 2px;">รหัสบิล: ${note.Note_ID}</div>
-          </div>
-          <div style="text-align: right; font-size: 11px; color: #64748b; line-height: 1.5;">
-            <div style="font-weight: 700; color: #0f172a;">Smart POS & Smart Note</div>
-            <div>บันทึกออฟไลน์ 100% (Offline-First)</div>
-          </div>
-        </div>
-      `;
-      headerEl.insertBefore(banner, headerEl.firstChild);
-    }
-
-    // Add receipt footer notice at bottom of clone
-    const footerEl = clone.querySelector('.note-footer');
-    if (footerEl) {
-      const notice = document.createElement('div');
-      notice.className = 'pdf-receipt-notice';
-      notice.innerHTML = `
-        <div style="font-size: 11px; text-align: center; color: #64748b; border-top: 1px dashed #cbd5e1; margin-top: 16px; padding-top: 12px;">
-          ขอบคุณที่ใช้บริการ • 100% Offline Static Web POS • บันทึกข้อมูลและล็อกราคาในเครื่อง
-        </div>
-      `;
-      footerEl.appendChild(notice);
-    }
-
-    // 4. Apply required inline styles: fixed width (700px) and solid white background
-    clone.style.position = 'fixed';
-    clone.style.top = '0';
-    clone.style.left = '0';
-    clone.style.width = '700px';
-    clone.style.maxWidth = '700px';
-    clone.style.minWidth = '700px';
-    clone.style.background = '#ffffff';
-    clone.style.backgroundColor = '#ffffff';
-    clone.style.color = '#0f172a';
-    clone.style.padding = '24px';
-    clone.style.border = '2px solid #0f172a';
-    clone.style.borderRadius = '12px';
-    clone.style.boxShadow = 'none';
-    clone.style.transform = 'none';
-    clone.style.boxSizing = 'border-box';
-    clone.style.zIndex = '999999';
-    clone.style.overflow = 'visible';
-
-    // 5. Append directly to body
-    document.body.appendChild(clone);
-
-    // 6. html2pdf configuration (Exact settings specified by user)
-    const opt = {
-      margin:       0.5,
-      filename:     `Bill_${safeCustomer}.pdf`,
-      image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true, windowWidth: 800 },
-      jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
-    };
+    const overlay = document.getElementById('exportLoadingOverlay');
+    const offscreenContainer = document.getElementById('offscreenExportContainer');
 
     try {
-      // Allow browser micro-task reflow so clone styles and fonts are fully computed
-      await new Promise(resolve => setTimeout(resolve, 80));
+      // ----------------------------------------------------------------------
+      // ลำดับที่ 1: สั่งแสดง Loading Overlay บังหน้าจอหลักทันที
+      // ----------------------------------------------------------------------
+      if (overlay) {
+        overlay.style.display = 'flex';
+        overlay.classList.remove('hidden');
+        overlay.setAttribute('aria-hidden', 'false');
+      }
 
-      // Run html2pdf on the cloned element
-      await window.html2pdf().set(opt).from(clone).save();
+      // ----------------------------------------------------------------------
+      // ลำดับที่ 2: สร้างโครงสร้าง HTML string ของบิลแบบ "สะอาด" (Clean Bill)
+      // ตัด UI สำหรับโต้ตอบออกให้หมด (ปุ่มลบถังขยะ, ช่องค้นหา, ปุ่ม +/-)
+      // เหลือแค่: ชื่อสินค้า ตัวเลขจำนวนรวมสุทธิ และราคา
+      // ----------------------------------------------------------------------
+      const currentNameInput = cardElement ? cardElement.querySelector('.customer-name-input') : null;
+      const customerName = (currentNameInput ? currentNameInput.value.trim() : '') || note.Customer_Name || 'ลูกค้าทั่วไป';
+
+      const dateFormatted = new Date(note.Created_Date || Date.now()).toLocaleDateString('th-TH', {
+        day: 'numeric',
+        month: 'short',
+        year: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      const isIOU = note.Status === 'IOU';
+      const isRestaurant = note.Bill_Type === 'restaurant';
+      const billTypeLabel = isRestaurant ? 'บิลร้านอาหาร (Restaurant)' : 'บิลร้านค้า (Retail)';
+      const statusText = isIOU ? 'เซ็นไว้ (ค้างชำระ)' : 'ชำระแล้ว (Paid)';
+      const statusBg = isIOU ? '#fef2f2' : '#ecfdf5';
+      const statusColor = isIOU ? '#dc2626' : '#059669';
+      const statusBorder = isIOU ? '#fca5a5' : '#6ee7b7';
+
+      const items = note.items || [];
+      let cleanItemsHTML = '';
+      if (items.length > 0) {
+        items.forEach(item => {
+          const unitPrice = Number(item.Price_Per_Unit || 0);
+          const unitPriceText = unitPrice > 0
+            ? `<div style="font-size: 11px; color: #64748b; font-weight: normal; margin-top: 2px;">@ ฿${unitPrice.toFixed(2)}</div>`
+            : '';
+          cleanItemsHTML += `
+            <tr style="border-bottom: 1px solid #f1f5f9;">
+              <td style="padding: 10px 8px; text-align: left; vertical-align: middle;">
+                <div style="font-size: 13px; font-weight: 600; color: #0f172a; line-height: 1.4;">${ExportService.escapeHTML(item.Product_Name)}</div>
+                ${unitPriceText}
+              </td>
+              <td style="padding: 10px 8px; text-align: center; vertical-align: middle; font-size: 13px; font-weight: 700; color: #334155;">
+                ${item.Quantity}
+              </td>
+              <td style="padding: 10px 8px; text-align: right; vertical-align: middle; font-size: 13px; font-weight: 700; color: #0f172a; white-space: nowrap;">
+                ฿${Number(item.Total_Price || 0).toFixed(2)}
+              </td>
+            </tr>
+          `;
+        });
+      } else {
+        cleanItemsHTML = `
+          <tr>
+            <td colspan="3" style="padding: 24px; text-align: center; color: #94a3b8; font-size: 13px;">
+              ไม่มีรายการสินค้า
+            </td>
+          </tr>
+        `;
+      }
+
+      const cleanBillHTML = `
+        <div class="clean-bill-capture-card" style="
+          width: 480px;
+          background-color: #FFFDF7;
+          color: #0f172a;
+          font-family: 'Prompt', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          padding: 28px 24px;
+          box-sizing: border-box;
+          border: 1.5px solid #e2e8f0;
+          border-radius: 18px;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+        ">
+          <!-- Receipt Header -->
+          <div style="border-bottom: 2px dashed #cbd5e1; padding-bottom: 16px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+              <div>
+                <div style="font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.01em;">ใบเสร็จ / บิลรายการ</div>
+                <div style="font-size: 11px; color: #64748b; margin-top: 3px; font-weight: 500;">
+                  เลขที่บิล: <span style="font-family: monospace; font-weight: 700; color: #334155;">${ExportService.escapeHTML(note.Note_ID)}</span>
+                </div>
+              </div>
+              <div style="text-align: right;">
+                <span style="
+                  display: inline-block;
+                  padding: 4px 10px;
+                  font-size: 11px;
+                  font-weight: 700;
+                  border-radius: 999px;
+                  background: ${statusBg};
+                  color: ${statusColor};
+                  border: 1px solid ${statusBorder};
+                ">${statusText}</span>
+                <div style="font-size: 11px; color: #64748b; margin-top: 4px; font-weight: 600;">${billTypeLabel}</div>
+              </div>
+            </div>
+
+            <!-- Customer & Time Meta -->
+            <div style="margin-top: 14px; background: rgba(241, 245, 249, 0.75); border-radius: 10px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-size: 11px; color: #64748b; display: block;">ชื่อลูกค้า / โต๊ะ:</span>
+                <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-top: 1px;">${ExportService.escapeHTML(customerName)}</div>
+              </div>
+              <div style="text-align: right;">
+                <span style="font-size: 11px; color: #64748b; display: block;">วันที่บันทึก:</span>
+                <div style="font-size: 12px; font-weight: 600; color: #334155; margin-top: 1px;">${dateFormatted}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Items Table -->
+          <div style="margin-bottom: 16px;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <thead>
+                <tr style="border-bottom: 2px solid #e2e8f0;">
+                  <th style="padding: 8px; text-align: left; font-size: 12px; font-weight: 700; color: #475569;">รายการ</th>
+                  <th style="padding: 8px; text-align: center; font-size: 12px; font-weight: 700; color: #475569; width: 60px;">จำนวน</th>
+                  <th style="padding: 8px; text-align: right; font-size: 12px; font-weight: 700; color: #475569; width: 90px;">รวม</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${cleanItemsHTML}
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Total Summary Section -->
+          <div style="border-top: 2px dashed #cbd5e1; padding-top: 14px; margin-top: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 12px; color: #64748b;">
+              <span>จำนวนรายการสินค้าทั้งหมด:</span>
+              <span style="font-weight: 700; color: #334155;">${items.length} รายการ</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 12px; margin-top: 8px;">
+              <span style="font-size: 15px; font-weight: 700; color: #0f172a;">ยอดรวมสุทธิ:</span>
+              <span style="font-size: 20px; font-weight: 800; color: ${isIOU ? '#dc2626' : '#059669'};">฿${Number(note.Total_Amount || 0).toFixed(2)}</span>
+            </div>
+          </div>
+
+          <!-- Receipt Footer -->
+          <div style="text-align: center; margin-top: 20px; padding-top: 14px; border-top: 1px dotted #cbd5e1; font-size: 11px; color: #94a3b8; line-height: 1.6;">
+            <div style="font-weight: 600; color: #64748b;">ขอบคุณที่ใช้บริการ • Smart POS & Smart Note</div>
+            <div>ระบบบันทึกออฟไลน์ 100% (Offline-First) • ล็อกข้อมูลและราคาสินค้าในเครื่อง</div>
+          </div>
+        </div>
+      `;
+
+      // ----------------------------------------------------------------------
+      // ลำดับที่ 3: นำ HTML string นั้นไปใส่ใน Off-screen Container (innerHTML)
+      // ----------------------------------------------------------------------
+      if (!offscreenContainer) {
+        throw new Error('ไม่พบคอนเทนเนอร์ Off-screen (id: offscreenExportContainer)');
+      }
+      offscreenContainer.innerHTML = cleanBillHTML;
+
+      // ----------------------------------------------------------------------
+      // ลำดับที่ 4: ใช้ setTimeout หน่วงเวลาประมาณ 300ms เพื่อให้ Browser Render CSS ให้สมบูรณ์
+      // ----------------------------------------------------------------------
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // ----------------------------------------------------------------------
+      // ลำดับที่ 5: เรียกใช้ html2canvas แคปภาพ Off-screen Container
+      // กำหนด options: { scale: 3, backgroundColor: "#FFFDF7", useCORS: true }
+      // ----------------------------------------------------------------------
+      const targetElement = offscreenContainer.firstElementChild || offscreenContainer;
+      const canvas = await window.html2canvas(targetElement, {
+        scale: 3,
+        backgroundColor: '#FFFDF7',
+        useCORS: true,
+        onclone: (clonedDoc) => {
+          const clonedContainer = clonedDoc.getElementById('offscreenExportContainer');
+          if (clonedContainer) {
+            clonedContainer.style.opacity = '1';
+            clonedContainer.classList.remove('opacity-0');
+          }
+        }
+      });
+
+      // ----------------------------------------------------------------------
+      // ลำดับที่ 6: แปลง Canvas เป็นรูป (toDataURL) และสั่ง Trigger ให้เบราว์เซอร์ดาวน์โหลดอัตโนมัติ
+      // ตั้งชื่อไฟล์ฟอร์แมต: Bill_YYYY-MM-DD-HH-mm-ss.png
+      // ----------------------------------------------------------------------
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const year = now.getFullYear();
+      const month = pad(now.getMonth() + 1);
+      const day = pad(now.getDate());
+      const hours = pad(now.getHours());
+      const minutes = pad(now.getMinutes());
+      const seconds = pad(now.getSeconds());
+      const filename = `Bill_${year}-${month}-${day}-${hours}-${minutes}-${seconds}.png`;
+
+      const dataUrl = canvas.toDataURL('image/png');
+      const downloadLink = document.createElement('a');
+      downloadLink.href = dataUrl;
+      downloadLink.download = filename;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+
+      if (window.SmartPOS && typeof window.SmartPOS.showToast === 'function') {
+        window.SmartPOS.showToast(`บันทึกภาพบิล ${filename} เรียบร้อย`, 'success');
+      }
     } catch (err) {
-      console.error('PDF Export Error:', err);
+      console.error('PNG Image Export Error:', err);
+      alert('เกิดข้อผิดพลาดในการบันทึกรูปภาพบิล กรุณาลองใหม่อีกครั้ง');
     } finally {
-      // 7. Remove the clone from the DOM immediately after PDF generation completes
-      if (clone && clone.parentNode) {
-        clone.parentNode.removeChild(clone);
+      // ----------------------------------------------------------------------
+      // ลำดับที่ 7 (ขั้นตอนจบ): ในบล็อก finally ล้างข้อมูลใน Off-screen Container (innerHTML = '')
+      // และทำการซ่อน Loading Overlay กลับไปตามเดิม
+      // ----------------------------------------------------------------------
+      if (offscreenContainer) {
+        offscreenContainer.innerHTML = '';
+      }
+      if (overlay) {
+        overlay.style.display = 'none';
+        overlay.classList.add('hidden');
+        overlay.setAttribute('aria-hidden', 'true');
       }
     }
+  }
+
+  /**
+   * Backward-compatible alias for exportNoteToPDF -> calls exportNoteToImage
+   */
+  static async exportNoteToPDF(note, cardElement) {
+    return this.exportNoteToImage(note, cardElement);
   }
 }
 
@@ -2400,8 +2512,8 @@ class SmartPOSApp {
         </div>
 
         <div class="note-actions-row">
-          <button class="btn-card-action btn-export-pdf" title="ส่งออกเป็นเอกสาร PDF">
-            <i data-lucide="file-down"></i> Export PDF
+          <button class="btn-card-action btn-export-pdf btn-export-image" title="บันทึกบิลเป็นรูปภาพ PNG (ความละเอียดสูง)">
+            <i data-lucide="image-down"></i> บันทึกภาพบิล
           </button>
           <button class="btn-card-action btn-delete-card" title="ลบบิลนี้ออกจากระบบ">
             <i data-lucide="trash-2"></i> ลบบิล
@@ -2763,13 +2875,12 @@ class SmartPOSApp {
       }
     }
 
-    // 6. Export PDF
-    const btnPdf = card.querySelector('.btn-export-pdf');
-    if (btnPdf) {
-      btnPdf.addEventListener('click', () => {
-        SFX.playPop();
-        ExportService.exportNoteToPDF(note, card);
-        this.showToast('กำลังส่งออกบิลเป็นไฟล์ PDF...', 'success');
+    // 6. Export Bill as High-Resolution PNG Image (Off-screen Rendering)
+    const btnExport = card.querySelector('.btn-export-image, .btn-export-pdf');
+    if (btnExport) {
+      btnExport.addEventListener('click', () => {
+        if (typeof SFX !== 'undefined' && SFX.playPop) SFX.playPop();
+        ExportService.exportNoteToImage(note, card);
       });
     }
 

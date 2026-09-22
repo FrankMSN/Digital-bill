@@ -19,6 +19,10 @@
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
 
+  <!-- html2canvas for High-Resolution Off-screen PNG Image Export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
   <!-- html2pdf.js for exporting client-side note cards directly to PDF -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"
     integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg=="
@@ -490,7 +494,19 @@
       </div>
     </div>
 
-    <!-- Hidden Template for PDF Printing (offscreen container) -->
+    <!-- Loading Overlay for Image Export Processing -->
+    <div id="exportLoadingOverlay" class="export-loading-overlay fixed inset-0 z-50 hidden" style="display: none;" aria-hidden="true">
+      <div class="export-loading-content">
+        <div class="export-spinner"></div>
+        <div class="export-loading-text">กำลังประมวลผลรูปภาพบิล...</div>
+        <div class="export-loading-sub">กรุณารอสักครู่ ระบบกำลังเรนเดอร์ภาพความละเอียดสูง (PNG 3x)</div>
+      </div>
+    </div>
+
+    <!-- Off-screen Container for Clean Bill Image Capture -->
+    <div id="offscreenExportContainer" class="offscreen-export-container fixed top-0 left-0 -z-50 pointer-events-none opacity-0"></div>
+
+    <!-- Legacy Template for PDF Printing (kept for compatibility) -->
     <div id="pdfExportContainer" class="pdf-export-wrapper" style="display: none;"></div>
 
     <!-- Toast Notifications -->
