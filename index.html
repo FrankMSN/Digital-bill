@@ -199,7 +199,7 @@
       </div>
     </main>
 
-    <!-- ==================== BILL TYPE SELECTION MODAL ==================== -->
+    <!-- ==================== BILL TYPE SELECTION MODAL (STACKED CARDS) ==================== -->
     <div id="billTypeModal" class="modal-overlay" aria-hidden="true" style="display: none;">
       <div class="modal-card bill-type-modal-card">
         <div class="modal-header">
@@ -212,44 +212,76 @@
               <p class="modal-desc">เลือกลักษณะการบันทึกรายการสำหรับบิลนี้</p>
             </div>
           </div>
-          <button class="modal-close-btn" data-close="billTypeModal">
+          <button class="modal-close-btn" data-close="billTypeModal" aria-label="ปิดหน้าต่าง">
             <i data-lucide="x"></i>
           </button>
         </div>
 
-        <div class="modal-body">
-          <div class="bill-type-cards-grid">
-            <!-- Option 1: บิลร้านค้า -->
-            <div class="bill-type-card" id="btnChooseRetailBill">
-              <div class="type-card-badge-pill retail-pill"><i data-lucide="database"></i> ใช้ Data สินค้า</div>
-              <div class="type-card-icon-wrap retail-wrap">
-                <i data-lucide="store"></i>
+        <div class="modal-body bill-type-modal-body">
+          <!-- Stacked Cards Scene with Side Navigation Arrows -->
+          <div class="bill-type-stacked-scene">
+            <!-- Left Arrow Button -->
+            <button type="button" class="bill-type-nav-btn prev" id="btnBillTypePrev" aria-label="สลับการ์ดก่อนหน้า" title="สลับการ์ด">
+              <i data-lucide="chevron-left"></i>
+            </button>
+
+            <!-- Card Stack Deck -->
+            <div class="bill-type-deck" id="billTypeDeck" data-active-index="0">
+              <!-- Option 1: บิลร้านค้า (Retail) -->
+              <div class="bill-type-card card-retail is-active" id="btnChooseRetailBill" data-type="retail" data-index="0" role="button" tabindex="0">
+                <div class="type-card-badge-pill retail-pill"><i data-lucide="database"></i> ใช้ Data สินค้า</div>
+                <div class="type-card-icon-wrap retail-wrap">
+                  <i data-lucide="store"></i>
+                </div>
+                <h4 class="type-card-title">บิลร้านค้า (Retail)</h4>
+                <p class="type-card-desc">เพิ่มสินค้าโดยดึงข้อมูลจากระบบ (Data) ราคาและชื่อล็อกตามแคตตาล็อกสินค้า</p>
+                <ul class="type-feature-list">
+                  <li><i data-lucide="check"></i> เลือกสินค้าจากแคตตาล็อกร้าน</li>
+                  <li><i data-lucide="check"></i> ดึงราคามาตรฐานอัตโนมัติ</li>
+                  <li><i data-lucide="check"></i> สแกน AI OCR ตรงกับสินค้าในร้าน</li>
+                </ul>
+                <button type="button" class="btn btn-primary btn-type-select">สร้างบิลร้านค้า</button>
               </div>
-              <h4 class="type-card-title">บิลร้านค้า (Retail)</h4>
-              <p class="type-card-desc">เพิ่มสินค้าโดยดึงข้อมูลจากระบบ (Data) ราคาและชื่อล็อกตามแคตตาล็อกสินค้า</p>
-              <ul class="type-feature-list">
-                <li><i data-lucide="check"></i> เลือกสินค้าจากแคตตาล็อกร้าน</li>
-                <li><i data-lucide="check"></i> ดึงราคามาตรฐานอัตโนมัติ</li>
-                <li><i data-lucide="check"></i> สแกน AI OCR ตรงกับสินค้าในร้าน</li>
-              </ul>
-              <button class="btn btn-primary btn-type-select">สร้างบิลร้านค้า</button>
+
+              <!-- Option 2: บิลร้านอาหาร (Restaurant) -->
+              <div class="bill-type-card card-restaurant is-stacked stacked-right" id="btnChooseRestaurantBill" data-type="restaurant" data-index="1" role="button" tabindex="0">
+                <div class="type-card-badge-pill restaurant-pill"><i data-lucide="edit-3"></i> พิมพ์มืออิสระ</div>
+                <div class="type-card-icon-wrap restaurant-wrap">
+                  <i data-lucide="utensils"></i>
+                </div>
+                <h4 class="type-card-title">บิลร้านอาหาร (Restaurant)</h4>
+                <p class="type-card-desc">เพิ่มรายการอาหารโดยใช้มือพิมพ์คีย์ชื่อเมนูและกำหนดราคาเองได้อย่างอิสระ</p>
+                <ul class="type-feature-list">
+                  <li><i data-lucide="check"></i> พิมพ์ชื่อเมนูอาหารตามสั่งเอง</li>
+                  <li><i data-lucide="check"></i> กำหนดราคาเองตามต้องการ</li>
+                  <li><i data-lucide="check"></i> ระบุหมายเหตุ / เบอร์โต๊ะได้</li>
+                </ul>
+                <button type="button" class="btn btn-restaurant btn-type-select">สร้างบิลร้านอาหาร</button>
+              </div>
             </div>
 
-            <!-- Option 2: บิลร้านอาหาร -->
-            <div class="bill-type-card" id="btnChooseRestaurantBill">
-              <div class="type-card-badge-pill restaurant-pill"><i data-lucide="edit-3"></i> พิมพ์มืออิสระ</div>
-              <div class="type-card-icon-wrap restaurant-wrap">
-                <i data-lucide="utensils"></i>
-              </div>
-              <h4 class="type-card-title">บิลร้านอาหาร (Restaurant)</h4>
-              <p class="type-card-desc">เพิ่มรายการอาหารโดยใช้มือพิมพ์คีย์ชื่อเมนูและกำหนดราคาเองได้อย่างอิสระ</p>
-              <ul class="type-feature-list">
-                <li><i data-lucide="check"></i> พิมพ์ชื่อเมนูอาหารตามสั่งเอง</li>
-                <li><i data-lucide="check"></i> กำหนดราคาเองตามต้องการ</li>
-                <li><i data-lucide="check"></i> ระบุหมายเหตุ / เบอร์โต๊ะได้</li>
-              </ul>
-              <button class="btn btn-restaurant btn-type-select">สร้างบิลร้านอาหาร</button>
-            </div>
+            <!-- Right Arrow Button -->
+            <button type="button" class="bill-type-nav-btn next" id="btnBillTypeNext" aria-label="สลับการ์ดถัดไป" title="สลับการ์ด">
+              <i data-lucide="chevron-right"></i>
+            </button>
+          </div>
+
+          <!-- Bottom Pagination Controls -->
+          <div class="bill-type-pagination">
+            <button type="button" class="pagination-tab active" data-index="0">
+              <i data-lucide="store"></i>
+              <span>บิลร้านค้า</span>
+            </button>
+            <button type="button" class="pagination-tab" data-index="1">
+              <i data-lucide="utensils"></i>
+              <span>บิลร้านอาหาร</span>
+            </button>
+          </div>
+
+          <!-- Touch Gesture Hint -->
+          <div class="bill-type-swipe-hint">
+            <i data-lucide="move-horizontal"></i>
+            <span>ปัดซ้าย-ขวา หรือกดลูกศรเพื่อสลับการ์ด</span>
           </div>
         </div>
       </div>

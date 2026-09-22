@@ -1552,17 +1552,65 @@ class SmartPOSApp {
       });
     });
 
-    // 3. Create New Note Buttons (Opens Bill Type Selection Modal)
+    // 3. Create New Note Buttons & Stacked Cards Controller
     const btnNewNote = document.getElementById('btnNewNote');
     const btnEmptyCreate = document.getElementById('btnEmptyCreate');
+    const billTypeModal = document.getElementById('billTypeModal');
+    const billTypeDeck = document.getElementById('billTypeDeck');
+    const btnBillTypePrev = document.getElementById('btnBillTypePrev');
+    const btnBillTypeNext = document.getElementById('btnBillTypeNext');
+    const paginationTabs = document.querySelectorAll('.bill-type-pagination .pagination-tab');
+    const cardRetail = document.getElementById('btnChooseRetailBill');
+    const cardRestaurant = document.getElementById('btnChooseRestaurantBill');
+    const stackCards = [cardRetail, cardRestaurant].filter(Boolean);
+
+    let activeTypeIndex = 0; // 0 = Retail, 1 = Restaurant
+
+    const updateStackedState = (index, playSound = false) => {
+      if (stackCards.length === 0) return;
+      activeTypeIndex = (index + stackCards.length) % stackCards.length;
+      if (playSound && typeof SFX !== 'undefined' && SFX.playPop) {
+        SFX.playPop();
+      }
+
+      stackCards.forEach((card, idx) => {
+        card.style.transform = '';
+        card.style.transition = '';
+        if (idx === activeTypeIndex) {
+          card.classList.add('is-active');
+          card.classList.remove('is-stacked', 'stacked-left', 'stacked-right');
+          card.setAttribute('aria-selected', 'true');
+        } else {
+          card.classList.remove('is-active');
+          card.classList.add('is-stacked');
+          card.setAttribute('aria-selected', 'false');
+          if (activeTypeIndex === 0) {
+            card.classList.add('stacked-right');
+            card.classList.remove('stacked-left');
+          } else {
+            card.classList.add('stacked-left');
+            card.classList.remove('stacked-right');
+          }
+        }
+      });
+
+      if (billTypeDeck) {
+        billTypeDeck.dataset.activeIndex = String(activeTypeIndex);
+      }
+
+      paginationTabs.forEach((tab, idx) => {
+        tab.classList.toggle('active', idx === activeTypeIndex);
+      });
+    };
+
     const openBillTypePicker = () => {
-      SFX.playPop();
-      const modal = document.getElementById('billTypeModal');
-      if (modal) {
-        modal.style.display = 'flex';
-        void modal.offsetWidth;
-        modal.classList.add('show');
-        modal.setAttribute('aria-hidden', 'false');
+      if (typeof SFX !== 'undefined' && SFX.playPop) SFX.playPop();
+      if (billTypeModal) {
+        billTypeModal.style.display = 'flex';
+        void billTypeModal.offsetWidth;
+        billTypeModal.classList.add('show');
+        billTypeModal.setAttribute('aria-hidden', 'false');
+        updateStackedState(0, false);
         if (window.lucide) lucide.createIcons();
       }
     };
@@ -1570,22 +1618,150 @@ class SmartPOSApp {
     if (btnNewNote) btnNewNote.addEventListener('click', openBillTypePicker);
     if (btnEmptyCreate) btnEmptyCreate.addEventListener('click', openBillTypePicker);
 
-    // Bill Type Modal Choices
-    const btnChooseRetail = document.getElementById('btnChooseRetailBill');
-    if (btnChooseRetail) {
-      btnChooseRetail.addEventListener('click', () => {
-        this.closeModal('billTypeModal');
-        this.createNewNote('retail');
+    // Arrow navigation buttons
+    if (btnBillTypePrev) {
+      btnBillTypePrev.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        updateStackedState(activeTypeIndex === 0 ? 1 : 0, true);
       });
     }
 
-    const btnChooseRestaurant = document.getElementById('btnChooseRestaurantBill');
-    if (btnChooseRestaurant) {
-      btnChooseRestaurant.addEventListener('click', () => {
-        this.closeModal('billTypeModal');
-        this.createNewNote('restaurant');
+    if (btnBillTypeNext) {
+      btnBillTypeNext.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        updateStackedState(activeTypeIndex === 0 ? 1 : 0, true);
       });
     }
+
+    // Pagination tabs switching
+    paginationTabs.forEach((tab, idx) => {
+      tab.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        updateStackedState(idx, true);
+      });
+    });
+
+    // Helper to confirm and create the chosen bill type
+    const confirmBillType = (type) => {
+      this.closeModal('billTypeModal');
+      this.createNewNote(type);
+    };
+
+    // Card interactions: buttons and cards
+    stackCards.forEach((card, idx) => {
+      const selectBtn = card.querySelector('.btn-type-select');
+      if (selectBtn) {
+        selectBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const type = card.dataset.type || (idx === 0 ? 'retail' : 'restaurant');
+          confirmBillType(type);
+        });
+      }
+
+      card.addEventListener('click', (e) => {
+        // If clicking the stacked (inactive) card, bring it to front
+        if (card.classList.contains('is-stacked')) {
+          e.preventDefault();
+          e.stopPropagation();
+          updateStackedState(idx, true);
+        } else {
+          // If already the active front card, proceed to create bill
+          const type = card.dataset.type || (idx === 0 ? 'retail' : 'restaurant');
+          confirmBillType(type);
+        }
+      });
+    });
+
+    // Mobile Swipe Handling for Stacked Cards (touchstart, touchmove, touchend)
+    if (billTypeDeck) {
+      let touchStartX = 0;
+      let touchStartY = 0;
+      let touchDiffX = 0;
+      let touchDiffY = 0;
+      let isHorizontalSwipe = false;
+      let isDragging = false;
+
+      billTypeDeck.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        touchDiffX = 0;
+        touchDiffY = 0;
+        isHorizontalSwipe = false;
+        isDragging = true;
+      }, { passive: true });
+
+      billTypeDeck.addEventListener('touchmove', (e) => {
+        if (!isDragging || e.touches.length !== 1) return;
+        touchDiffX = e.touches[0].clientX - touchStartX;
+        touchDiffY = e.touches[0].clientY - touchStartY;
+
+        // Check if movement is horizontal swipe or vertical scroll
+        if (!isHorizontalSwipe && (Math.abs(touchDiffX) > 7 || Math.abs(touchDiffY) > 7)) {
+          if (Math.abs(touchDiffX) > Math.abs(touchDiffY)) {
+            isHorizontalSwipe = true;
+          } else {
+            // Primarily vertical scrolling; cancel dragging to allow standard scroll
+            isDragging = false;
+            return;
+          }
+        }
+
+        if (isHorizontalSwipe) {
+          const activeCard = stackCards[activeTypeIndex];
+          if (activeCard) {
+            const dragOffset = Math.max(-100, Math.min(100, touchDiffX));
+            const rotateDeg = dragOffset * 0.035;
+            activeCard.style.transform = `translate3d(${dragOffset}px, 0, 0) rotate(${rotateDeg}deg)`;
+            activeCard.style.transition = 'none';
+          }
+        }
+      }, { passive: true });
+
+      const handleTouchEnd = () => {
+        if (!isDragging && !isHorizontalSwipe) return;
+        isDragging = false;
+
+        const activeCard = stackCards[activeTypeIndex];
+        if (activeCard) {
+          activeCard.style.transition = '';
+        }
+
+        if (isHorizontalSwipe && Math.abs(touchDiffX) > 38) {
+          if (touchDiffX < 0) {
+            updateStackedState(activeTypeIndex === 0 ? 1 : 0, true);
+          } else {
+            updateStackedState(activeTypeIndex === 0 ? 1 : 0, true);
+          }
+        } else if (activeCard) {
+          activeCard.style.transform = '';
+        }
+
+        isHorizontalSwipe = false;
+        touchDiffX = 0;
+        touchDiffY = 0;
+      };
+
+      billTypeDeck.addEventListener('touchend', handleTouchEnd, { passive: true });
+      billTypeDeck.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+    }
+
+    // Keyboard support: Left / Right arrow keys when modal is open
+    document.addEventListener('keydown', (e) => {
+      if (billTypeModal && billTypeModal.style.display !== 'none' && billTypeModal.classList.contains('show')) {
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          updateStackedState(activeTypeIndex === 0 ? 1 : 0, true);
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          updateStackedState(activeTypeIndex === 0 ? 1 : 0, true);
+        }
+      }
+    });
 
     // 4. Camera Scan (AI OCR) Button
     const btnScanCamera = document.getElementById('btnScanCamera');
